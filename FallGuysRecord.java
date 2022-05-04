@@ -2,8 +2,6 @@ import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Point;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.BufferedReader;
@@ -208,7 +206,7 @@ class RoundDef {
 		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "ムービングスポットライト", HUNT));
 		roundNames.put("FallGuy_DrumTop", new RoundDef("Lily Leapers", "リリーリーパー", RACE));
 		roundNames.put("FallGuy_Gauntlet_08", new RoundDef("Party Promenade", "パーティプロムナード", RACE));
-		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティ", HUNT));
+		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", HUNT));
 		roundNames.put("FallGuy_PipedUp", new RoundDef("Pipe Dream", "パイプドリーム", RACE));
 		roundNames.put("FallGuy_Tunnel_Race_01", new RoundDef("Roll On", "ロールオン", RACE));
 		roundNames.put("FallGuy_SeeSaw_variant2", new RoundDef("See Saw", "シーソー", RACE));
@@ -223,7 +221,7 @@ class RoundDef {
 		roundNames.put("FallGuy_Gauntlet_03", new RoundDef("Whirlygig", "グルグルファイト", RACE));
 		roundNames.put("FallGuy_WallGuys", new RoundDef("Wall Guys", "ウォールガイズ", RACE));
 		roundNames.put("FallGuy_FruitPunch", new RoundDef("Big Shots", "ビッグショット", SURVIVAL));
-		roundNames.put("FallGuy_Block_Party", new RoundDef("Block Party", "ブロックパーティ", SURVIVAL));
+		roundNames.put("FallGuy_Block_Party", new RoundDef("Block Party", "ブロックパーティー", SURVIVAL));
 		roundNames.put("FallGuy_HoverboardSurvival", new RoundDef("Hoverboard Heroes", "ホバーボードヒーローズ", SURVIVAL));
 		roundNames.put("FallGuy_JumpClub_01", new RoundDef("Jump Club", "ジャンプクラブ", SURVIVAL));
 		roundNames.put("FallGuy_MatchFall", new RoundDef("Perfect Match", "パーフェクトマッチ", LOGIC));
@@ -237,17 +235,17 @@ class RoundDef {
 		roundNames.put("FallGuy_EggGrab_02", new RoundDef("Egg Siege", "エッグキャッスル", TEAM));
 		roundNames.put("FallGuy_FallBall_5", new RoundDef("Fall Ball", "フォールボール", TEAM));
 		roundNames.put("FallGuy_BallHogs_01", new RoundDef("Hoarders", "ため込み合戦", TEAM));
-		roundNames.put("FallGuy_Hoops_01", new RoundDef("Hoopsie Daisy", "Hoopsie Daisy", TEAM));
-		roundNames.put("FallGuy_TeamInfected", new RoundDef("Jinxed", "Jinxed", TEAM));
+		roundNames.put("FallGuy_Hoops_01", new RoundDef("Hoopsie Daisy", "フープ・ループ・ゴール", TEAM));
+		roundNames.put("FallGuy_TeamInfected", new RoundDef("Jinxed", "バッドラック", TEAM));
 		roundNames.put("FallGuy_ChickenChase_01", new RoundDef("Pegwin Pursuit", "チームペンギン", TEAM));
 		roundNames.put("FallGuy_TerritoryControl_v2", new RoundDef("Power Trip", "パワートリップ", TEAM));
 		roundNames.put("FallGuy_RocknRoll", new RoundDef("Rock'N'Roll", "ロックンロール", TEAM));
-		roundNames.put("FallGuy_Snowy_Scrap", new RoundDef("Snowy Scrap", "Snowy Scrap", TEAM));
+		roundNames.put("FallGuy_Snowy_Scrap", new RoundDef("Snowy Scrap", "スノースクラップ", TEAM));
 		roundNames.put("FallGuy_Invisibeans", new RoundDef("Sweet Thieves", "キャンディドロボー", TEAM));
 		roundNames.put("FallGuy_ConveyorArena_01", new RoundDef("Team Tail Tag", "チームしっぽ鬼", TEAM));
 		roundNames.put("FallGuy_FallMountain_Hub_Complete", new RoundDef("Fall Mountain", "フォールマウンテン", RACE));
 		roundNames.put("FallGuy_FloorFall", new RoundDef("Hex-A-Gone", "とまるなキケン", SURVIVAL));
-		roundNames.put("FallGuy_JumpShowdown_01", new RoundDef("Jump Showdown", "ジャンプショーダウン", SURVIVAL));
+		roundNames.put("FallGuy_JumpShowdown_01", new RoundDef("Jump Showdown", "ジャンプ・ショーダウン", SURVIVAL));
 		roundNames.put("FallGuy_Crown_Maze_Topdown", new RoundDef("Lost Temple", "ロストテンプル", RACE));
 		roundNames.put("FallGuy_Tunnel_Final", new RoundDef("Roll Off", "ロールオフ", SURVIVAL));
 		roundNames.put("FallGuy_Arena_01", new RoundDef("Royal Fumble", "ロイヤルファンブル", HUNT));
@@ -262,7 +260,7 @@ class RoundDef {
 // 優勝回数ランキングをとりあえずデフォルト実装
 class RankingMaker {
 	public String toString() {
-		return "Final/優勝";
+		return "Final/Win";
 	}
 
 	public String getDesc() {
@@ -363,32 +361,6 @@ class RankingMaker {
 	}
 }
 
-//FallBall Cup のみ
-class FallBallRankingMaker extends RankingMaker {
-	public String toString() {
-		return "FallBall";
-	}
-
-	public String getDesc() {
-		return "FallBall のみの勝率。";
-	}
-
-	// このラウンドを集計対象とするかどうかを判定
-	public boolean isEnable(Round r) {
-		if (!r.fixed)
-			return false;
-		// fallball custom round のみ
-		if (r.name.equals("FallGuy_FallBall_5"))
-			return true;
-		return false;
-	}
-
-	// stat.totalScore を設定する。
-	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.totalScore += p.win == Boolean.TRUE ? 1 : 0;
-	}
-}
-
 // レース１位 4pt 決勝進出10pt 優勝30pt
 class FeedFirstRankingMaker extends RankingMaker {
 	public String toString() {
@@ -422,6 +394,32 @@ class FeedFirstRankingMaker extends RankingMaker {
 		}
 		if (p.ranking == 1) // 1st
 			stat.totalScore += 4;
+	}
+}
+
+//FallBall Cup のみ
+class FallBallRankingMaker extends RankingMaker {
+	public String toString() {
+		return "FallBall";
+	}
+
+	public String getDesc() {
+		return "FallBall のみの勝率。";
+	}
+
+	// このラウンドを集計対象とするかどうかを判定
+	public boolean isEnable(Round r) {
+		if (!r.fixed)
+			return false;
+		// fallball custom round のみ
+		if (r.name.equals("FallGuy_FallBall_5"))
+			return true;
+		return false;
+	}
+
+	// stat.totalScore を設定する。
+	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
+		stat.totalScore += p.win == Boolean.TRUE ? 1 : 0;
 	}
 }
 
@@ -719,8 +717,7 @@ class FGReader extends TailerListenerAdapter {
 				String[] sp = line.split("Player Name: ", 2);
 				Core.myName = sp[1];
 			}
-			getPlayersScore(line);
-			getFlipperStatus(line);
+			parseLine(line);
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw e;
@@ -761,8 +758,8 @@ class FGReader extends TailerListenerAdapter {
 	static final int MEMBER_DETECTING = 2;
 	static final int RESULT_DETECTING = 3;
 
-	private void getPlayersScore(String text) {
-		Matcher m = patternServer.matcher(text);
+	private void parseLine(String line) {
+		Matcher m = patternServer.matcher(line);
 		if (m.find()) {
 			String ip = m.group(1);
 			if (!ip.equals(Core.serverIp)) {
@@ -784,7 +781,7 @@ class FGReader extends TailerListenerAdapter {
 				}
 			}
 		}
-		m = patternMatchStart.matcher(text);
+		m = patternMatchStart.matcher(line);
 		if (m.find()) {
 			String showName = m.group(1);
 			long id = (int) (Math.random() * 65536);
@@ -796,18 +793,18 @@ class FGReader extends TailerListenerAdapter {
 		switch (readState) {
 		case SHOW_DETECTING: // start show or round detection
 		case ROUND_DETECTING: // start round detection
-			m = patternShowName.matcher(text);
+			m = patternShowName.matcher(line);
 			if (m.find()) {
 				String showName = m.group(1);
 				Core.getCurrentMatch().name = showName;
 				listener.showUpdated();
 				break;
 			}
-			if (text.contains("isFinalRound=")) {
-				isFinal = text.contains("isFinalRound=True");
+			if (line.contains("isFinalRound=")) {
+				isFinal = line.contains("isFinalRound=True");
 				break;
 			}
-			m = patternStartGame.matcher(text);
+			m = patternStartGame.matcher(line);
 			if (m.find()) {
 				String roundName = m.group(1);
 				long frame = Long.parseUnsignedLong(m.group(2));
@@ -817,7 +814,7 @@ class FGReader extends TailerListenerAdapter {
 			}
 			break;
 		case MEMBER_DETECTING: // join detection
-			m = patternPlayerSpawn.matcher(text);
+			m = patternPlayerSpawn.matcher(line);
 			if (m.find()) {
 				String name = m.group(1);
 				int partyId = m.group(2).length() == 0 ? 0 : Integer.parseUnsignedInt(m.group(2)); // 空文字列のことあり
@@ -829,16 +826,16 @@ class FGReader extends TailerListenerAdapter {
 						+ " squadId=" + squadId + ") spwaned.");
 				break;
 			}
-			if (text.contains("[StateGameLoading] Starting the game.")) {
+			if (line.contains("[StateGameLoading] Starting the game.")) {
 				System.out.println("DETECT STARTING GAME");
-				Core.getCurrentRound().start = getTime(text);
+				Core.getCurrentRound().start = getTime(line);
 				listener.roundStarted();
 				goalCount = eliminatedCount = 0; // reset
 				readState = RESULT_DETECTING;
 				break;
 			}
-			if (text.contains("[StateMainMenu] Creating or joining lobby")
-					|| text.contains("[StateMatchmaking] Begin matchmaking")) {
+			if (line.contains("[StateMainMenu] Creating or joining lobby")
+					|| line.contains("[StateMatchmaking] Begin matchmaking")) {
 				System.out.println("DETECT BACK TO LOBBY");
 				Core.rounds.remove(Core.rounds.size() - 1); // delete current round
 				readState = SHOW_DETECTING;
@@ -846,7 +843,7 @@ class FGReader extends TailerListenerAdapter {
 			}
 			break;
 		case RESULT_DETECTING: // result detection
-			m = patternPlayerResult.matcher(text);
+			m = patternPlayerResult.matcher(line);
 			if (m.find()) {
 				int playerId = Integer.parseUnsignedInt(m.group(1));
 				boolean succeeded = "True".equals(m.group(2));
@@ -872,7 +869,7 @@ class FGReader extends TailerListenerAdapter {
 				break;
 			}
 			// round over より後に出力されている。
-			m = patternPlayerResult2.matcher(text);
+			m = patternPlayerResult2.matcher(line);
 			if (m.find()) {
 				int playerId = Integer.parseUnsignedInt(m.group(1));
 				int score = Integer.parseUnsignedInt(m.group(2));
@@ -887,49 +884,33 @@ class FGReader extends TailerListenerAdapter {
 				break;
 			}
 			//if (text.contains("[ClientGameManager] Server notifying that the round is over.")
-			if (text.contains("[GameSession] Changing state from Playing to GameOver")) {
+			if (line.contains("[GameSession] Changing state from Playing to GameOver")) {
 				System.out.println("DETECT END GAME");
 				Core.getCurrentRound().fixed = true;
-				Core.getCurrentRound().end = getTime(text);
+				Core.getCurrentRound().end = getTime(line);
 				Core.updateStats();
 				listener.roundDone();
 				readState = ROUND_DETECTING;
 				break;
 			}
-			if (text.contains("== [CompletedEpisodeDto] ==")) {
+			if (line.contains("== [CompletedEpisodeDto] ==")) {
 				// kudos 他はこの後に続く
 				readState = SHOW_DETECTING;
 				break;
 			}
-			if (text.contains("[GameStateMachine] Replacing FGClient.StateGameInProgress")
-					|| text.contains("[ClientGameManager] Shutdown")
-					|| text.contains("[StateMainMenu] Creating or joining lobby")
-					|| text.contains("[StateMainMenu] Loading scene MainMenu")
-					|| text.contains("[StateMatchmaking] Begin matchmaking")
-					|| text.contains("Changing local player state to: SpectatingEliminated")
-					|| text.contains("[GlobalGameStateClient] SwitchToDisconnectingState")
-					|| text.contains(
+			if (line.contains("[GameStateMachine] Replacing FGClient.StateGameInProgress")
+					|| line.contains("[ClientGameManager] Shutdown")
+					|| line.contains("[StateMainMenu] Creating or joining lobby")
+					|| line.contains("[StateMainMenu] Loading scene MainMenu")
+					|| line.contains("[StateMatchmaking] Begin matchmaking")
+					|| line.contains("Changing local player state to: SpectatingEliminated")
+					|| line.contains("[GlobalGameStateClient] SwitchToDisconnectingState")
+					|| line.contains(
 							"[GameStateMachine] Replacing FGClient.StatePrivateLobby with FGClient.StateMainMenu")) {
 				readState = SHOW_DETECTING;
 				break;
 			}
 			break;
-		}
-	}
-
-	private void getFlipperStatus(String text) {
-		if (text.contains("SeededRandomisable 12: Flipper has initial flip direction:")) {
-			if (text.substring(text.length() - 6).equals("North ")) {
-				FallGuysRecord.frame.fliper1.setText("青パネル: 青側");
-			} else {
-				FallGuysRecord.frame.fliper1.setText("青パネル: 黄側");
-			}
-		} else if (text.contains("SeededRandomisable 13: Flipper has initial flip direction:")) {
-			if (text.substring(text.length() - 6).equals("North ")) {
-				FallGuysRecord.frame.fliper2.setText("黄パネル: 青側");
-			} else {
-				FallGuysRecord.frame.fliper2.setText("黄パネル: 黄側");
-			}
 		}
 	}
 }
@@ -949,7 +930,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		int pt_x = 10;
 		int pt_y = 10;
 		int size_x = 1280;
-		int size_y = 680;
+		int size_y = 628;
 		try (BufferedReader br = new BufferedReader(new FileReader("window_pt_size.ini"))) {
 			String str;
 			String[] value;
@@ -978,29 +959,25 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	JPanel p;
+	JLabel myStatLabel;
+	JLabel pingLabel;
 	JList<String> matchSel;
 	JList<String> roundsSel;
 	JTextArea roundResultArea;
-	JLabel pingLabel;
-	JLabel count_label;
-	JLabel fliper1;
-	JLabel fliper2;
 	JTextArea rankingArea;
-	JButton ranking_sort;
-	int ranking_sort_flg;
-	JButton ranking_filter;
-	int ranking_filter_flg;
+	JComboBox<String> rankingSortSel;
+	JComboBox<Integer> rankingFilterSel;
 	JComboBox<String> playerSel;
 	JButton removeMemberButton;
 	JComboBox<RankingMaker> rankingMakerSel;
 	JLabel rankingDescLabel;;
 
-	static final int LINE1_Y = 20;
-	static final int LINE2_Y = 50;
-	static final int LINE3_Y = 75;
-	static final int LINE4_Y = 100;
+	static final int LINE1_Y = 10;
+	static final int LINE2_Y = 40;
+	static final int LINE4_Y = 498;
 	static final int LINE5_Y = 530;
-	static final int COL1_X = 15;
+	static final int LINE6_Y = 560;
+	static final int COL1_X = 10;
 	static final int COL2_X = 400;
 	static final int COL3_X = 530;
 	static final int COL4_X = 760;
@@ -1008,121 +985,67 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	FallGuysRecord() {
 		p = new JPanel();
 		p.setLayout(null);
-		ranking_sort_flg = 0;
-		ranking_filter_flg = 0;
-
-		count_label = new JLabel("0勝 / 0試合 (0.0%)");
-		count_label.setFont(new Font(fontFamily, Font.BOLD, 20));
-		count_label.setBounds(COL1_X, LINE1_Y, 300, 20);
-		p.add(count_label);
-
-		pingLabel = new JLabel("PING:");
-		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, 16));
-		pingLabel.setBounds(COL2_X, LINE1_Y, 300, 20);
-		p.add(pingLabel);
-
-		fliper1 = new JLabel("青パネル: ?");
-		fliper1.setFont(new Font(fontFamily, Font.BOLD, 16));
-		fliper1.setBounds(COL1_X, LINE2_Y, 150, 20);
-		p.add(fliper1);
-		fliper2 = new JLabel("黄パネル: ?");
-		fliper2.setFont(new Font(fontFamily, Font.BOLD, 16));
-		fliper2.setBounds(COL1_X + 140, LINE2_Y, 150, 20);
-		p.add(fliper2);
 
 		JLabel label = new JLabel("【総合ランキング】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
-		label.setBounds(COL1_X, LINE3_Y, 200, 20);
+		label.setBounds(COL1_X, LINE1_Y, 200, 20);
 		p.add(label);
-		ranking_sort = new JButton("スコア順");
-		ranking_sort.setFont(new Font(fontFamily, Font.BOLD, 13));
-		ranking_sort.setBounds(COL1_X + 120, LINE3_Y, 95, 25);
-		ranking_sort.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				switch (ranking_sort_flg) {
-				case 0:
-					ranking_sort_flg = 1;
-					ranking_sort.setText("勝利数順");
-					break;
-				case 1:
-					ranking_sort_flg = 2;
-					ranking_sort.setText("勝率順");
-					break;
-				case 2:
-					/*
-					ranking_sort_flg = 3;
-					ranking_sort.setText("同チ率順");
-					ranking_sort.setText("同チ勝率順");
-					break;
-					case 3:
-					 */
-					ranking_sort_flg = 0;
-					ranking_sort.setText("スコア順");
-					break;
-				}
-				displayRanking();
-			}
-		});
-		p.add(ranking_sort);
 
-		ranking_filter = new JButton("全表示");
-		ranking_filter.setFont(new Font(fontFamily, Font.BOLD, 13));
-		ranking_filter.setBounds(COL1_X + 220, LINE3_Y, 105, 25);
-		ranking_filter.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				switch (ranking_filter_flg) {
-				case 0:
-					ranking_filter_flg = 10;
-					ranking_filter.setText("10試合以上");
-					break;
-				case 10:
-					ranking_filter_flg = 20;
-					ranking_filter.setText("20試合以上");
-					break;
-				case 20:
-					ranking_filter_flg = 25;
-					ranking_filter.setText("25試合以上");
-					break;
-				case 25:
-					ranking_filter_flg = 30;
-					ranking_filter.setText("30試合以上");
-					break;
-				case 30:
-					ranking_filter_flg = 0;
-					ranking_filter.setText("全表示");
-					break;
-				}
-				displayRanking();
-			}
+		rankingSortSel = new JComboBox<String>();
+		rankingSortSel.setFont(new Font(fontFamily, Font.BOLD, 12));
+		rankingSortSel.setBounds(COL1_X + 120, LINE1_Y, 95, 20);
+		rankingSortSel.addItem("スコア順");
+		rankingSortSel.addItem("勝利数順");
+		rankingSortSel.addItem("勝率順");
+		rankingSortSel.addItemListener(ev -> {
+			displayRanking();
 		});
-		p.add(ranking_filter);
+		p.add(rankingSortSel);
+
+		rankingFilterSel = new JComboBox<Integer>();
+		rankingFilterSel.setFont(new Font(fontFamily, Font.BOLD, 12));
+		rankingFilterSel.setBounds(COL1_X + 220, LINE1_Y, 44, 20);
+		rankingFilterSel.addItem(0);
+		rankingFilterSel.addItem(3);
+		rankingFilterSel.addItem(10);
+		rankingFilterSel.addItem(20);
+		rankingFilterSel.addItem(25);
+		rankingFilterSel.addItem(30);
+		rankingFilterSel.addItemListener(ev -> {
+			displayRanking();
+		});
+		p.add(rankingFilterSel);
+		label = new JLabel("試合以上のみを表示");
+		label.setFont(new Font(fontFamily, Font.PLAIN, 12));
+		label.setBounds(COL1_X + 262, LINE1_Y, 120, 20);
+		p.add(label);
 
 		label = new JLabel("【マッチ一覧】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
-		label.setBounds(COL2_X, LINE3_Y, 100, 20);
+		label.setBounds(COL2_X, LINE1_Y, 100, 20);
 		p.add(label);
 		label = new JLabel("【ラウンド一覧】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
-		label.setBounds(COL3_X, LINE3_Y, 200, 20);
+		label.setBounds(COL3_X, LINE1_Y, 200, 20);
 		p.add(label);
 		label = new JLabel("【ラウンド結果】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
-		label.setBounds(COL4_X, LINE3_Y, 200, 20);
+		label.setBounds(COL4_X, LINE1_Y, 200, 20);
 		p.add(label);
 
 		JScrollPane scroller;
 		rankingArea = new JTextArea();
 		rankingArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, 14));
 		p.add(scroller = new JScrollPane(rankingArea));
-		scroller.setBounds(COL1_X, LINE4_Y, 380, 500);
+		scroller.setBounds(COL1_X, LINE2_Y, 380, 480);
 
 		rankingMakerSel = new JComboBox<RankingMaker>();
 		rankingMakerSel.setFont(new Font(fontFamily, Font.BOLD, 12));
-		rankingMakerSel.setBounds(COL1_X, LINE4_Y + 505, 150, 25);
+		rankingMakerSel.setBounds(COL1_X, LINE5_Y, 150, 25);
 		p.add(rankingMakerSel);
 		rankingMakerSel.addItem(new RankingMaker());
-		rankingMakerSel.addItem(new FallBallRankingMaker());
 		rankingMakerSel.addItem(new FeedFirstRankingMaker());
+		rankingMakerSel.addItem(new FallBallRankingMaker());
 		rankingMakerSel.addItem(new CandyRankingMaker());
 		rankingMakerSel.addItemListener(ev -> {
 			Core.rankingMaker = (RankingMaker) rankingMakerSel.getSelectedItem();
@@ -1132,13 +1055,13 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 		rankingDescLabel = new JLabel(Core.rankingMaker.getDesc());
 		rankingDescLabel.setFont(new Font(fontFamily, Font.PLAIN, 14));
-		rankingDescLabel.setBounds(COL1_X + 160, LINE4_Y + 505, 800, 20);
+		rankingDescLabel.setBounds(COL1_X + 160, LINE5_Y + 505, 800, 20);
 		p.add(rankingDescLabel);
 
 		matchSel = new JList<String>(new DefaultListModel<String>());
 		matchSel.setFont(new Font(fontFamily, Font.PLAIN, 16));
 		p.add(scroller = new JScrollPane(matchSel));
-		scroller.setBounds(COL2_X, LINE4_Y, 120, 420);
+		scroller.setBounds(COL2_X, LINE2_Y, 120, 450);
 		matchSel.addListSelectionListener((ev) -> {
 			if (ev.getValueIsAdjusting()) {
 				// The user is still manipulating the selection.
@@ -1153,7 +1076,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		roundsSel = new JList<String>(new DefaultListModel<String>());
 		roundsSel.setFont(new Font(fontFamily, Font.PLAIN, 16));
 		p.add(scroller = new JScrollPane(roundsSel));
-		scroller.setBounds(COL3_X, LINE4_Y, 220, 420);
+		scroller.setBounds(COL3_X, LINE2_Y, 220, 450);
 		roundsSel.addListSelectionListener((ev) -> {
 			if (ev.getValueIsAdjusting()) {
 				// The user is still manipulating the selection.
@@ -1165,18 +1088,28 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		roundResultArea = new JTextArea();
 		roundResultArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, 16));
 		p.add(scroller = new JScrollPane(roundResultArea));
-		scroller.setBounds(COL4_X, LINE4_Y, 500, 420);
+		scroller.setBounds(COL4_X, LINE2_Y, 494, 450);
 
 		playerSel = new JComboBox<String>();
 		playerSel.setFont(new Font(fontFamily, Font.BOLD, 12));
-		playerSel.setBounds(COL3_X, LINE5_Y, 150, 25);
+		playerSel.setBounds(COL3_X, LINE4_Y, 150, 25);
 		p.add(playerSel);
 
 		removeMemberButton = new JButton("ラウンドから参加者を外す");
 		removeMemberButton.setFont(new Font(fontFamily, Font.BOLD, 14));
 		removeMemberButton.addActionListener(ev -> removePlayerOnCurrentMatch());
 		p.add(removeMemberButton);
-		removeMemberButton.setBounds(COL3_X + 160, LINE5_Y, 200, 25);
+		removeMemberButton.setBounds(COL3_X + 160, LINE4_Y, 200, 25);
+
+		myStatLabel = new JLabel("0勝 / 0試合 (0.0%)");
+		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 20));
+		myStatLabel.setBounds(COL1_X, LINE6_Y, 300, 20);
+		p.add(myStatLabel);
+
+		pingLabel = new JLabel("PING:");
+		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, 16));
+		pingLabel.setBounds(COL4_X, LINE6_Y, 300, 20);
+		p.add(pingLabel);
 
 		Container contentPane = getContentPane();
 		contentPane.add(p);
@@ -1198,7 +1131,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 					Date d = new Date();
 					SimpleDateFormat d1 = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-					filewriter.write("[" + d1.format(d) + "] " + count_label.getText() + "\n");
+					filewriter.write("[" + d1.format(d) + "] " + myStatLabel.getText() + "\n");
 					filewriter.close();
 				} catch (IOException e1) {
 				}
@@ -1267,7 +1200,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				buf.append(p.win == null ? "　" : p.win ? "○" : "✕");
 				buf.append(Core.pad(p.ranking));
 				if (p.squadId > 0)
-					buf.append(" sq=").append(p.squadId).append(" ");
+					buf.append(" sq=").append(Core.pad(p.squadId)).append(" ");
 				buf.append(" pt=").append(Core.pad(p.score)).append("\t");
 				buf.append(p.name).append("\n");
 			}
@@ -1323,11 +1256,11 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 	void displayRanking() {
 		rankingArea.setText(Core.rankingMaker.getRanking(
-				FallGuysRecord.frame.ranking_sort_flg,
-				FallGuysRecord.frame.ranking_filter_flg));
+				rankingSortSel.getSelectedIndex(),
+				(Integer) rankingFilterSel.getSelectedItem()));
 		rankingArea.setCaretPosition(0);
 		PlayerStat own = Core.getMyStat();
 		if (own != null)
-			count_label.setText(own.winCount + "勝 / " + own.roundCount + "試合 (" + own.getRate() + "%)");
+			myStatLabel.setText(own.winCount + "勝 / " + own.roundCount + "試合 (" + own.getRate() + "%)");
 	}
 }
