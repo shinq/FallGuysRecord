@@ -682,6 +682,8 @@ class FGReader extends TailerListenerAdapter {
 
 		void roundStarted();
 
+		void roundUpdated();
+
 		void roundDone();
 	}
 
@@ -727,10 +729,11 @@ class FGReader extends TailerListenerAdapter {
 
 	static Pattern patternServer = Pattern
 			.compile("\\[StateConnectToGame\\] We're connected to the server! Host = ([^:]+)");
-	static Pattern patternMatchStart = Pattern.compile("\\[StateMatchmaking\\] Begin matchmaking ([^\\s]+)");
 	static Pattern patternShowName = Pattern.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
 	//	static Pattern patternShow = Pattern
 	//			.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
+	static Pattern patternMatchStart = Pattern.compile("\\[StateMatchmaking\\] Begin matchmaking ([^\\s]+)");
+	static Pattern patternMatchStart2 = Pattern.compile("\\[StateMatchmaking\\] Begin party communications");
 	static Pattern patternStartGame = Pattern.compile(
 			"\\[StateGameLoading\\] Loading game level scene ([^\\s]+) - frame (\\d+)");
 	static Pattern patternPlayerSpawn = Pattern.compile(
@@ -788,6 +791,15 @@ class FGReader extends TailerListenerAdapter {
 			long id = (int) (Math.random() * 65536);
 			Core.addMatch(new Match(showName, id));
 			System.out.println("DETECT SHOW STARTING " + showName);
+			readState = ROUND_DETECTING;
+			listener.showUpdated();
+		}
+		m = patternMatchStart2.matcher(line);
+		if (m.find()) {
+			String showName = "_";
+			long id = (int) (Math.random() * 65536);
+			Core.addMatch(new Match(showName, id));
+			System.out.println("DETECT SHOW STARTING squad ?");
 			readState = ROUND_DETECTING;
 			listener.showUpdated();
 		}
@@ -864,8 +876,7 @@ class FGReader extends TailerListenerAdapter {
 						eliminatedCount += 1;
 						System.out.println(player);
 					}
-					if (succeeded) {
-					}
+					listener.roundUpdated();
 				}
 				break;
 			}
@@ -1018,7 +1029,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.add(rankingFilterSel);
 		label = new JLabel("試合以上のみを表示");
 		label.setFont(new Font(fontFamily, Font.PLAIN, 12));
-		label.setBounds(COL1_X + 262, LINE1_Y, 120, 20);
+		label.setBounds(COL1_X + 268, LINE1_Y, 120, 20);
 		p.add(label);
 
 		label = new JLabel("【マッチ一覧】");
@@ -1056,7 +1067,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 		rankingDescLabel = new JLabel(Core.rankingMaker.getDesc());
 		rankingDescLabel.setFont(new Font(fontFamily, Font.PLAIN, 14));
-		rankingDescLabel.setBounds(COL1_X + 160, LINE5_Y + 505, 800, 20);
+		rankingDescLabel.setBounds(COL1_X + 160, LINE5_Y, 800, 20);
 		p.add(rankingDescLabel);
 
 		matchSel = new JList<String>(new DefaultListModel<String>());
@@ -1144,20 +1155,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		reader.start();
 	}
 
-	void matchSelected(Match m) {
-		SwingUtilities.invokeLater(() -> {
-			DefaultListModel<String> model = (DefaultListModel<String>) roundsSel.getModel();
-			model.clear();
-			synchronized (Core.listLock) {
-				for (Round r : m == null ? Core.rounds : m.rounds) {
-					model.addElement(RoundDef.get(r.name).dispNameJa);
-				}
-			}
-			roundsSel.setSelectedIndex(model.size() - 1);
-			roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
-		});
-	}
-
 	void updateMatches() {
 		pingLabel.setText("PING: " + Core.pingMS + "ms(" + Core.serverIp + ")");
 		DefaultListModel<String> model = (DefaultListModel<String>) matchSel.getModel();
@@ -1173,30 +1170,40 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	void updateRounds() {
-		SwingUtilities.invokeLater(() -> {
-			DefaultListModel<String> model = (DefaultListModel<String>) roundsSel.getModel();
-			model.clear();
-			synchronized (Core.listLock) {
-				for (Round r : Core.rounds) {
-					model.addElement(RoundDef.get(r.name).dispNameJa);
-				}
-				roundsSel.setSelectedIndex(model.size() - 1);
-				roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
-				displayRanking();
+		DefaultListModel<String> model = (DefaultListModel<String>) roundsSel.getModel();
+		model.clear();
+		synchronized (Core.listLock) {
+			for (Round r : Core.rounds) {
+				model.addElement(RoundDef.get(r.name).dispNameJa);
 			}
-		});
+			roundsSel.setSelectedIndex(model.size() - 1);
+			roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
+			displayRanking();
+		}
+	}
+
+	void matchSelected(Match m) {
+		DefaultListModel<String> model = (DefaultListModel<String>) roundsSel.getModel();
+		model.clear();
+		synchronized (Core.listLock) {
+			for (Round r : m == null ? Core.rounds : m.rounds) {
+				model.addElement(RoundDef.get(r.name).dispNameJa);
+			}
+		}
+		roundsSel.setSelectedIndex(model.size() - 1);
+		roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
 	}
 
 	void roundSelected(Round r) {
-		SwingUtilities.invokeLater(() -> {
-			if (r == null) {
-				roundResultArea.setText("");
-				return;
-			}
-			updatePlayerSel(r);
-			StringBuilder buf = new StringBuilder();
-			if (r.isFinal)
-				buf.append("********** FINAL ***********\n");
+		if (r == null) {
+			roundResultArea.setText("");
+			return;
+		}
+		updatePlayerSel(r);
+		StringBuilder buf = new StringBuilder();
+		if (r.isFinal)
+			buf.append("********** FINAL ***********\n");
+		synchronized (Core.listLock) {
 			for (Player p : r.byRank()) {
 				buf.append(p.win == null ? "　" : p.win ? "○" : "✕");
 				buf.append(Core.pad(p.ranking));
@@ -1205,45 +1212,58 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				buf.append(" pt=").append(Core.pad(p.score)).append("\t");
 				buf.append(p.name).append("\n");
 			}
-			roundResultArea.setText(new String(buf));
-			roundResultArea.setCaretPosition(0);
-		});
+		}
+		roundResultArea.setText(new String(buf));
+		roundResultArea.setCaretPosition(0);
 	}
 
 	@Override
 	public void showUpdated() {
-		updateMatches();
+		SwingUtilities.invokeLater(() -> {
+			updateMatches();
+		});
 	}
 
 	@Override
 	public void roundStarted() {
-		updatePlayerSel(Core.getCurrentRound());
-		updateRounds();
+		SwingUtilities.invokeLater(() -> {
+			updatePlayerSel(Core.getCurrentRound());
+			updateRounds();
+		});
+	}
+
+	@Override
+	public void roundUpdated() {
+		SwingUtilities.invokeLater(() -> {
+			roundSelected(getSelectedRound());
+		});
 	}
 
 	@Override
 	public void roundDone() {
-		updateRounds();
+		SwingUtilities.invokeLater(() -> {
+			updateRounds();
+		});
 	}
 
 	Round getSelectedRound() {
-		if (matchSel.getSelectedIndex() < 0 || roundsSel.getSelectedIndex() < 0)
-			return null;
-		if (matchSel.getSelectedIndex() == 0)
-			return Core.rounds.get(roundsSel.getSelectedIndex());
-		return Core.matches.get(matchSel.getSelectedIndex() - 1).rounds.get(roundsSel.getSelectedIndex());
+		synchronized (Core.listLock) {
+			if (matchSel.getSelectedIndex() < 0 || roundsSel.getSelectedIndex() < 0)
+				return null;
+			if (matchSel.getSelectedIndex() == 0)
+				return Core.rounds.get(roundsSel.getSelectedIndex());
+			return Core.matches.get(matchSel.getSelectedIndex() - 1).rounds.get(roundsSel.getSelectedIndex());
+		}
 	}
 
 	public void updatePlayerSel(Round r) {
-		SwingUtilities.invokeLater(() -> {
-			playerSel.removeAllItems();
-			synchronized (Core.listLock) {
-				for (Player player : r.byName.values()) {
-					FallGuysRecord.frame.playerSel.addItem(player.name);
-				}
+		playerSel.removeAllItems();
+		synchronized (Core.listLock) {
+			for (Player player : r.byName.values()) {
+				FallGuysRecord.frame.playerSel.addItem(player.name);
 			}
-			//playerSel.setSelectedItem(Core.myName);
-		});
+		}
+		//playerSel.setSelectedItem(Core.myName);
 	}
 
 	private void removePlayerOnCurrentMatch() {
