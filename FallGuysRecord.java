@@ -293,37 +293,38 @@ class RankingMaker {
 		}
 		if (list.size() == 0)
 			return "";
+		Comparator<PlayerStat> comp;
 		switch (sort) {
-		case 0:
-			Collections.sort(list, new Core.PlayerComparatorScore());
-			break;
 		case 1:
-			Collections.sort(list, new Core.PlayerComparatorWin());
+			comp = new Core.PlayerComparatorWin();
 			break;
 		case 2:
-			Collections.sort(list, new Core.PlayerComparatorRate());
+			comp = new Core.PlayerComparatorRate();
 			break;
-		/*
-		case 2:
-		Collections.sort(list, new PlayerComparatorSameteam());
-		break;
-		case 3:
-		Collections.sort(list, new PlayerComparatorSameteamWin());
-		break;
-		*/
+		case 0:
+		default:
+			comp = new Core.PlayerComparatorScore();
+			break;
 		}
+		Collections.sort(list, comp);
 
 		StringBuilder buf = new StringBuilder();
-		int no = 0;
+		int internalNo = 0;
+		int dispNo = 0;
+		PlayerStat prev = null;
 		for (PlayerStat player : list) {
 			if (player.roundCount >= minMatches) {
-				no += 1;
-				buf.append(Core.pad(no)).append(" ");
+				internalNo += 1;
+				if (prev == null || comp.compare(player, prev) != 0) {
+					dispNo = internalNo;
+				}
+				buf.append(Core.pad(dispNo)).append(" ");
+				prev = player;
 
 				if (sort < 3) {
-					buf.append(Core.pad(player.winCount)).append("/").append(Core.pad(player.roundCount))
-							.append("(").append(String.format("%6.2f", player.getRate()))
-							.append("% pt=" + String.format("%3d", player.totalScore) + ")");
+					buf.append("(").append(Core.pad(player.winCount)).append("/").append(Core.pad(player.roundCount))
+							.append(") ").append(String.format("%6.2f", player.getRate()))
+							.append("% ").append(String.format("%3d", player.totalScore)).append("pt");
 				} else {
 					/*
 					str = str + pad(player.sameteam) + "/";
@@ -487,44 +488,49 @@ class CandyRankingMaker extends RankingMaker {
 		}
 		if (list.size() == 0)
 			return "";
+		Comparator<PlayerStat> comp;
 		switch (sort) {
-		case 0:
-			Collections.sort(list, new Core.PlayerComparatorScore());
-			break;
 		case 1:
-			Collections.sort(list, new Core.PlayerComparatorWin());
+			comp = new Core.PlayerComparatorWin();
 			break;
 		case 2:
-			Collections.sort(list, new Core.PlayerComparatorRate());
+			comp = new Core.PlayerComparatorRate();
 			break;
-		/*
-		case 2:
-		Collections.sort(list, new PlayerComparatorSameteam());
-		break;
-		case 3:
-		Collections.sort(list, new PlayerComparatorSameteamWin());
-		break;
-		*/
+		case 0:
+		default:
+			comp = new Core.PlayerComparatorScore();
+			break;
 		}
+		Collections.sort(list, comp);
 
 		StringBuilder buf = new StringBuilder();
-		int no = 0;
+		int internalNo = 0;
+		int dispNo = 0;
+		PlayerStat prev = null;
 		for (PlayerStat player : list) {
-			no += 1;
-			buf.append(Core.pad(no)).append(" ").append(player.name).append("\n");
-			buf.append("  total: ").append(Core.pad(player.winCount)).append("/").append(Core.pad(player.roundCount))
-					.append("(")
-					.append(String.format("%6.2f", player.getRate())).append("%)\n");
-			buf.append("  thief: ").append(Core.pad(player.getInt("thiefWin")))
-					.append("/").append(Core.pad(player.getInt("thiefMatch"))).append("(")
-					.append(String.format("%6.2f",
-							Core.calRate(player.getInt("thiefWin"), player.getInt("thiefMatch"))))
-					.append("%)\n");
-			buf.append("  guard: ").append(Core.pad(player.getInt("guardWin")))
-					.append("/").append(Core.pad(player.getInt("guardMatch"))).append("(")
-					.append(String.format("%6.2f",
-							Core.calRate(player.getInt("guardWin"), player.getInt("guardMatch"))))
-					.append("%)\n");
+			if (player.roundCount >= minMatches) {
+				internalNo += 1;
+				if (prev == null || comp.compare(player, prev) != 0) {
+					dispNo = internalNo;
+				}
+				buf.append(Core.pad(dispNo)).append(" ").append(player.name).append("\n");
+				prev = player;
+
+				buf.append("  total: ").append(Core.pad(player.winCount)).append("/")
+						.append(Core.pad(player.roundCount))
+						.append(" (")
+						.append(String.format("%6.2f", player.getRate())).append("%)\n");
+				buf.append("  thief: ").append(Core.pad(player.getInt("thiefWin")))
+						.append("/").append(Core.pad(player.getInt("thiefMatch"))).append(" (")
+						.append(String.format("%6.2f",
+								Core.calRate(player.getInt("thiefWin"), player.getInt("thiefMatch"))))
+						.append("%)\n");
+				buf.append("  guard: ").append(Core.pad(player.getInt("guardWin")))
+						.append("/").append(Core.pad(player.getInt("guardMatch"))).append(" (")
+						.append(String.format("%6.2f",
+								Core.calRate(player.getInt("guardWin"), player.getInt("guardMatch"))))
+						.append("%)\n");
+			}
 		}
 		return new String(buf);
 	}
@@ -906,8 +912,8 @@ class FGReader extends TailerListenerAdapter {
 				break;
 			}
 			if (line.contains("== [CompletedEpisodeDto] ==")) {
-				// kudos 他はこの後に続く
-				readState = SHOW_DETECTING;
+				// 獲得 kudos 他はこの後に続く、決勝完了前に吐くこともあるのでステージ完了ではない。
+
 				break;
 			}
 			if (line.contains("[GameStateMachine] Replacing FGClient.StateGameInProgress")
@@ -1017,7 +1023,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingFilterSel = new JComboBox<Integer>();
 		rankingFilterSel.setFont(new Font(fontFamily, Font.BOLD, 12));
 		rankingFilterSel.setBounds(COL1_X + 220, LINE1_Y, 44, 20);
-		rankingFilterSel.addItem(0);
+		rankingFilterSel.addItem(1);
 		rankingFilterSel.addItem(3);
 		rankingFilterSel.addItem(10);
 		rankingFilterSel.addItem(20);
