@@ -88,6 +88,7 @@ class PlayerStat {
 class Player {
 	String name; // for user identication
 	int id; // id of current round (diferrent for each rounds)
+	int objectId; // object id of current round (for score log)
 	int squadId;
 	int partyId;
 	int ranking; // rank of current round
@@ -159,6 +160,13 @@ class Round {
 		}
 	}
 
+	public Player getByObjectId(int id) {
+		for (Player p : byId.values())
+			if (p.objectId == id)
+				return p;
+		return null;
+	}
+
 	public int getPlayerCount() {
 		return byId.size();
 	}
@@ -204,6 +212,14 @@ class Round {
 			}
 		});
 		return list;
+	}
+
+	public Squad getSquad(int squadId) {
+		Squad s = new Squad(squadId);
+		for (Player p : byId.values())
+			if (p.squadId == squadId)
+				s.members.add(p);
+		return s;
 	}
 }
 
@@ -386,7 +402,7 @@ class RankingMaker {
 	}
 }
 
-// レース１位 4pt 決勝進出10pt 優勝30pt
+//レース１位 4pt 決勝進出10pt 優勝30pt
 class FeedFirstRankingMaker extends RankingMaker {
 	@Override
 	public String toString() {
@@ -423,6 +439,47 @@ class FeedFirstRankingMaker extends RankingMaker {
 		}
 		if (p.ranking == 1) // 1st
 			stat.totalScore += 4;
+	}
+}
+
+// スクアッドとしての決勝進出優勝でのランキング
+class SquadsRankingMaker extends RankingMaker {
+	@Override
+	public String toString() {
+		return "Squads";
+	}
+
+	@Override
+	public String getDesc() {
+		return "squads として優勝していれば優勝としてカウント。決勝進出10pt。優勝30pt で計算。";
+	}
+
+	// このラウンドを集計対象とするかどうかを判定
+	@Override
+	public boolean isEnable(Round r) {
+		if (!r.fixed)
+			return false;
+		// squadId のあるもののみ
+		if (r.byId.size() == 0 || r.byId.values().iterator().next().squadId == 0)
+			return false;
+		return r.isFinal;
+	}
+
+	// stat.totalScore を設定する。
+	@Override
+	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
+		if (r.isFinal) {
+			stat.totalScore += 10;
+			for (Player member : r.getSquad(p.squadId).members) {
+				if (member.win != null && member.win) {
+					stat.totalScore += 20;
+					// 自身が優勝でない場合優勝数追加
+					if (p.win == null || !p.win)
+						stat.winCount += 1;
+					return;
+				}
+			}
+		}
 	}
 }
 
@@ -770,6 +827,7 @@ class FGReader extends TailerListenerAdapter {
 
 	//////////////////////////////////////////////////////////////////
 	int readState = 0;
+	int playerCount = 0;
 	int qualifiedCount = 0;
 	int eliminatedCount = 0;
 	boolean isFinal = false;
@@ -800,7 +858,10 @@ class FGReader extends TailerListenerAdapter {
 			"\\[StateGameLoading\\] Loading game level scene ([^\\s]+) - frame (\\d+)");
 	static Pattern patternPlayerSpawn = Pattern.compile(
 			"\\[CameraDirector\\] Adding Spectator target (.+) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
+	static Pattern patternPlayerSpawn2 = Pattern.compile(
+			"\\[StateGameLoading\\] OnPlayerSpawned - name=FallGuy \\[(\\d+)\\] .+ \\([^)]+\\) ID=(\\d+) was spawned");
 
+	static Pattern patternScoreUpdated = Pattern.compile("Player (\\d+) score = (\\d+)");
 	static Pattern patternPlayerResult = Pattern.compile(
 			"ClientGameManager::HandleServerPlayerProgress PlayerId=(\\d+) is succeeded=([^\\s]+)");
 
@@ -841,7 +902,6 @@ class FGReader extends TailerListenerAdapter {
 						Core.pingMS = System.currentTimeMillis() - now;
 						System.out.println("PING " + res + " " + Core.pingMS);
 					} catch (IOException e) {
-						// TODO 自動生成された catch ブロック
 						e.printStackTrace();
 					}
 				}
@@ -886,6 +946,7 @@ class FGReader extends TailerListenerAdapter {
 				Core.addRound(new Round(roundName, frame, isFinal, Core.getCurrentMatch()));
 				System.out.println("DETECT STARTING " + roundName + " frame=" + frame);
 				readState = MEMBER_DETECTING;
+				playerCount = 0;
 			}
 			break;
 		case MEMBER_DETECTING: // join detection
@@ -899,6 +960,17 @@ class FGReader extends TailerListenerAdapter {
 				Core.getCurrentRound().add(playerName, playerId, squadId, partyId);
 				System.out.println(Core.getCurrentRound().byId.size() + " Player " + playerName + " (id=" + playerId
 						+ " squadId=" + squadId + ") spwaned.");
+				break;
+			}
+			m = patternPlayerSpawn2.matcher(line);
+			if (m.find()) {
+				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
+				int playerId = Integer.parseUnsignedInt(m.group(2));
+				playerCount += 1;
+				Player p = Core.getCurrentRound().byId.get(playerId);
+				if (p != null)
+					p.objectId = playerObjectId;
+				//System.out.println("playerId=" + playerId + " objectId=" + playerObjectId);
 				break;
 			}
 			if (line.contains("[StateGameLoading] Starting the game.")) {
@@ -918,6 +990,22 @@ class FGReader extends TailerListenerAdapter {
 			}
 			break;
 		case RESULT_DETECTING: // result detection
+			// score update duaring raound
+			m = patternScoreUpdated.matcher(line);
+			if (m.find()) {
+				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
+				int score = Integer.parseUnsignedInt(m.group(2));
+				Player player = Core.getCurrentRound().getByObjectId(playerObjectId);
+				if (player != null) {
+					if (player.score != score) {
+						System.out.println(player + " score " + player.score + " -> " + score);
+						player.score = score;
+						listener.roundUpdated();
+					}
+				}
+				break;
+			}
+			// qualified / eliminated
 			m = patternPlayerResult.matcher(line);
 			if (m.find()) {
 				int playerId = Integer.parseUnsignedInt(m.group(1));
@@ -928,11 +1016,11 @@ class FGReader extends TailerListenerAdapter {
 				if (player != null) {
 					player.win = succeeded;
 					if (succeeded) {
-
-						player.score = Core.getCurrentRound().byId.size() - qualifiedCount;
+						if (player.score == 0)
+							player.score = playerCount - qualifiedCount;
 						qualifiedCount += 1;
 						player.ranking = qualifiedCount;
-						System.out.println("Qualified " + player + " rank=" + player.ranking);
+						System.out.println("Qualified " + player + " rank=" + player.ranking + " " + player.score);
 					} else {
 						player.ranking = Core.getCurrentRound().byId.size() - eliminatedCount;
 						eliminatedCount += 1;
@@ -942,6 +1030,7 @@ class FGReader extends TailerListenerAdapter {
 				}
 				break;
 			}
+			// squad score log
 			// round over より後に出力されている。
 			m = patternPlayerResult2.matcher(line);
 			if (m.find()) {
@@ -957,6 +1046,7 @@ class FGReader extends TailerListenerAdapter {
 				}
 				break;
 			}
+			// round end
 			//if (text.contains("[ClientGameManager] Server notifying that the round is over.")
 			if (line.contains(
 					"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateQualificationScreen")
@@ -1147,6 +1237,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.add(rankingMakerSel);
 		rankingMakerSel.addItem(new RankingMaker());
 		rankingMakerSel.addItem(new FeedFirstRankingMaker());
+		rankingMakerSel.addItem(new SquadsRankingMaker());
 		rankingMakerSel.addItem(new FallBallRankingMaker());
 		rankingMakerSel.addItem(new CandyRankingMaker());
 		rankingMakerSel.addItem(new SnipeRankingMaker());
@@ -1257,6 +1348,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	void updateMatches() {
+		int prevSelectedIndex = matchSel.getSelectedIndex();
 		pingLabel.setText("PING: " + Core.pingMS + "ms(" + Core.serverIp + ")");
 		DefaultListModel<String> model = (DefaultListModel<String>) matchSel.getModel();
 		model.clear();
@@ -1265,7 +1357,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			for (Match m : Core.matches) {
 				model.addElement(m.name);
 			}
-			matchSel.setSelectedIndex(0);
+			matchSel.setSelectedIndex(prevSelectedIndex <= 0 ? 0 : model.getSize() - 1);
 			matchSel.ensureIndexIsVisible(matchSel.getSelectedIndex());
 		}
 	}
@@ -1319,11 +1411,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					buf.append(Core.pad(dispNo)).append(" ");
 					prev = s;
 
-					buf.append(" sq=").append(Core.pad(s.squadId)).append(" ").append(Core.pad(s.getScore()))
-							.append("pt ");
+					buf.append(" ").append(Core.pad(s.getScore())).append("pt sq=").append(s.squadId).append("\n");
 					for (Player p : s.members)
-						buf.append(p.name).append("(").append(p.score).append(") ");
-					buf.append("\n");
+						buf.append("  ").append(Core.pad(p.score)).append(" ").append(p.name).append("\n");
 				}
 				buf.append("******** solo rank ******").append("\n");
 			}
