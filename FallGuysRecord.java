@@ -35,9 +35,9 @@ import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
-import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.SpringLayout;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 
@@ -256,7 +256,7 @@ class RoundDef {
 		roundNames.put("FallGuy_Gauntlet_04", new RoundDef("Knight Fever", "ナイトフィーバー", RACE));
 		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動くスポットライト", HUNT));
 		roundNames.put("FallGuy_DrumTop", new RoundDef("Lily Leapers", "リリー・リーパー", RACE));
-		roundNames.put("FallGuy_Gauntlet_08", new RoundDef("Party Promenade", "パーティプロムナード", RACE));
+		roundNames.put("FallGuy_Gauntlet_08", new RoundDef("Party Promenade", "パーティープロムナード", RACE));
 		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", HUNT));
 		roundNames.put("FallGuy_PipedUp", new RoundDef("Pipe Dream", "パイプドリーム", RACE));
 		roundNames.put("FallGuy_Tunnel_Race_01", new RoundDef("Roll On", "ロールオン", RACE));
@@ -1033,7 +1033,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		frame.setVisible(true);
 	}
 
-	JPanel p;
 	JLabel myStatLabel;
 	JLabel pingLabel;
 	JList<String> matchSel;
@@ -1055,20 +1054,25 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	static final int COL1_X = 10;
 	static final int COL2_X = 400;
 	static final int COL3_X = 530;
-	static final int COL4_X = 760;
+	static final int COL4_X = 690;
 
 	FallGuysRecord() {
-		p = new JPanel();
-		p.setLayout(null);
+		SpringLayout l = new SpringLayout();
+		Container p = getContentPane();
+		p.setLayout(l);
 
 		JLabel label = new JLabel("【総合ランキング】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
-		label.setBounds(COL1_X, LINE1_Y, 200, 20);
+		l.putConstraint(SpringLayout.WEST, label, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
+		label.setSize(200, 20);
 		p.add(label);
 
 		rankingSortSel = new JComboBox<String>();
 		rankingSortSel.setFont(new Font(fontFamily, Font.BOLD, 12));
-		rankingSortSel.setBounds(COL1_X + 120, LINE1_Y, 95, 20);
+		l.putConstraint(SpringLayout.WEST, rankingSortSel, 10, SpringLayout.EAST, label);
+		l.putConstraint(SpringLayout.NORTH, rankingSortSel, LINE1_Y, SpringLayout.NORTH, p);
+		rankingSortSel.setSize(95, 20);
 		rankingSortSel.addItem("スコア順");
 		rankingSortSel.addItem("勝利数順");
 		rankingSortSel.addItem("勝率順");
@@ -1079,7 +1083,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		rankingFilterSel = new JComboBox<Integer>();
 		rankingFilterSel.setFont(new Font(fontFamily, Font.BOLD, 12));
-		rankingFilterSel.setBounds(COL1_X + 220, LINE1_Y, 44, 20);
+		l.putConstraint(SpringLayout.WEST, rankingFilterSel, 4, SpringLayout.EAST, rankingSortSel);
+		l.putConstraint(SpringLayout.NORTH, rankingFilterSel, LINE1_Y, SpringLayout.NORTH, p);
+		rankingFilterSel.setSize(44, 20);
 		rankingFilterSel.addItem(1);
 		rankingFilterSel.addItem(3);
 		rankingFilterSel.addItem(10);
@@ -1092,30 +1098,51 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.add(rankingFilterSel);
 		label = new JLabel("試合以上のみを表示");
 		label.setFont(new Font(fontFamily, Font.PLAIN, 12));
-		label.setBounds(COL1_X + 268, LINE1_Y, 120, 20);
+		l.putConstraint(SpringLayout.WEST, label, 4, SpringLayout.EAST, rankingFilterSel);
+		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
+		label.setSize(120, 20);
 		p.add(label);
 
 		label = new JLabel("【マッチ一覧】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
-		label.setBounds(COL2_X, LINE1_Y, 100, 20);
+		l.putConstraint(SpringLayout.WEST, label, COL2_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
+		label.setSize(100, 20);
 		p.add(label);
 		label = new JLabel("【ラウンド一覧】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
-		label.setBounds(COL3_X, LINE1_Y, 200, 20);
+		l.putConstraint(SpringLayout.WEST, label, COL3_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
+		label.setSize(100, 20);
 		p.add(label);
 		label = new JLabel("【ラウンド結果】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
-		label.setBounds(COL4_X, LINE1_Y, 200, 20);
+		l.putConstraint(SpringLayout.WEST, label, COL4_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
+		label.setSize(100, 20);
 		p.add(label);
 
-		JScrollPane scroller;
-		rankingArea = new JTextArea();
-		rankingArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, 14));
-		p.add(scroller = new JScrollPane(rankingArea));
-		scroller.setBounds(COL1_X, LINE2_Y, 380, 480);
+		// under
+		myStatLabel = new JLabel("0勝 / 0試合 (0.0%)");
+		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 20));
+		l.putConstraint(SpringLayout.WEST, myStatLabel, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.SOUTH, myStatLabel, -10, SpringLayout.SOUTH, p);
+		myStatLabel.setPreferredSize(new Dimension(300, 20));
+		p.add(myStatLabel);
 
+		pingLabel = new JLabel("PING:");
+		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, 16));
+		l.putConstraint(SpringLayout.WEST, pingLabel, COL4_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.SOUTH, pingLabel, -10, SpringLayout.SOUTH, p);
+		pingLabel.setPreferredSize(new Dimension(300, 20));
+		p.add(pingLabel);
+
+		JScrollPane scroller;
 		rankingMakerSel = new JComboBox<RankingMaker>();
 		rankingMakerSel.setFont(new Font(fontFamily, Font.BOLD, 12));
+		l.putConstraint(SpringLayout.WEST, rankingMakerSel, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.SOUTH, rankingMakerSel, -10, SpringLayout.NORTH, myStatLabel);
+		rankingMakerSel.setPreferredSize(new Dimension(150, 20));
 		rankingMakerSel.setBounds(COL1_X, LINE5_Y, 150, 25);
 		p.add(rankingMakerSel);
 		rankingMakerSel.addItem(new RankingMaker());
@@ -1131,13 +1158,26 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 		rankingDescLabel = new JLabel(Core.rankingMaker.getDesc());
 		rankingDescLabel.setFont(new Font(fontFamily, Font.PLAIN, 14));
-		rankingDescLabel.setBounds(COL1_X + 160, LINE5_Y, 800, 20);
+		l.putConstraint(SpringLayout.WEST, rankingDescLabel, 10, SpringLayout.EAST, rankingMakerSel);
+		l.putConstraint(SpringLayout.SOUTH, rankingDescLabel, -10, SpringLayout.NORTH, myStatLabel);
+		rankingDescLabel.setPreferredSize(new Dimension(800, 20));
 		p.add(rankingDescLabel);
+
+		rankingArea = new JTextArea();
+		rankingArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, 14));
+		p.add(scroller = new JScrollPane(rankingArea));
+		l.putConstraint(SpringLayout.WEST, scroller, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -10, SpringLayout.NORTH, rankingMakerSel);
+		scroller.setPreferredSize(new Dimension(380, 0));
 
 		matchSel = new JList<String>(new DefaultListModel<String>());
 		matchSel.setFont(new Font(fontFamily, Font.PLAIN, 16));
 		p.add(scroller = new JScrollPane(matchSel));
-		scroller.setBounds(COL2_X, LINE2_Y, 120, 450);
+		l.putConstraint(SpringLayout.WEST, scroller, COL2_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
+		scroller.setPreferredSize(new Dimension(120, 0));
 		matchSel.addListSelectionListener((ev) -> {
 			if (ev.getValueIsAdjusting()) {
 				// The user is still manipulating the selection.
@@ -1152,7 +1192,10 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		roundsSel = new JList<String>(new DefaultListModel<String>());
 		roundsSel.setFont(new Font(fontFamily, Font.PLAIN, 16));
 		p.add(scroller = new JScrollPane(roundsSel));
-		scroller.setBounds(COL3_X, LINE2_Y, 220, 450);
+		l.putConstraint(SpringLayout.WEST, scroller, COL3_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
+		scroller.setPreferredSize(new Dimension(150, 0));
 		roundsSel.addListSelectionListener((ev) -> {
 			if (ev.getValueIsAdjusting()) {
 				// The user is still manipulating the selection.
@@ -1164,31 +1207,25 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		roundResultArea = new JTextArea();
 		roundResultArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, 16));
 		p.add(scroller = new JScrollPane(roundResultArea));
-		scroller.setBounds(COL4_X, LINE2_Y, 494, 450);
+		l.putConstraint(SpringLayout.WEST, scroller, COL4_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.EAST, scroller, -10, SpringLayout.EAST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
 
 		playerSel = new JComboBox<String>();
 		playerSel.setFont(new Font(fontFamily, Font.BOLD, 12));
-		playerSel.setBounds(COL3_X, LINE4_Y, 150, 25);
+		l.putConstraint(SpringLayout.WEST, playerSel, COL3_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.SOUTH, playerSel, -10, SpringLayout.NORTH, rankingMakerSel);
+		playerSel.setPreferredSize(new Dimension(150, 20));
 		p.add(playerSel);
 
 		removeMemberButton = new JButton("ラウンドから参加者を外す");
 		removeMemberButton.setFont(new Font(fontFamily, Font.BOLD, 14));
+		l.putConstraint(SpringLayout.WEST, removeMemberButton, 10, SpringLayout.EAST, playerSel);
+		l.putConstraint(SpringLayout.SOUTH, removeMemberButton, -10, SpringLayout.NORTH, rankingMakerSel);
+		removeMemberButton.setPreferredSize(new Dimension(200, 20));
 		removeMemberButton.addActionListener(ev -> removePlayerOnCurrentMatch());
 		p.add(removeMemberButton);
-		removeMemberButton.setBounds(COL3_X + 160, LINE4_Y, 200, 25);
-
-		myStatLabel = new JLabel("0勝 / 0試合 (0.0%)");
-		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 20));
-		myStatLabel.setBounds(COL1_X, LINE6_Y, 300, 20);
-		p.add(myStatLabel);
-
-		pingLabel = new JLabel("PING:");
-		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, 16));
-		pingLabel.setBounds(COL4_X, LINE6_Y, 300, 20);
-		p.add(pingLabel);
-
-		Container contentPane = getContentPane();
-		contentPane.add(p);
 
 		this.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
