@@ -257,7 +257,7 @@ class RoundDef {
 
 	static Map<String, RoundDef> roundNames = new HashMap<String, RoundDef>();
 	static {
-		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアタイム", HUNT));
+		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", HUNT));
 		roundNames.put("FallGuy_BiggestFan", new RoundDef("Big Fans", "ビッグファン", RACE));
 		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", HUNT));
 		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", HUNT));
@@ -269,7 +269,7 @@ class RoundDef {
 		roundNames.put("FallGuy_ChompChomp_01", new RoundDef("Gate Crash", "ゲートクラッシュ", RACE));
 		roundNames.put("FallGuy_Gauntlet_01", new RoundDef("Hit Parade", "ヒットパレード", RACE));
 		roundNames.put("FallGuy_Hoops_Blockade", new RoundDef("Hoopsie Legends", "フープループレジェンド", HUNT));
-		roundNames.put("FallGuy_Gauntlet_04", new RoundDef("Knight Fever", "ナイトフィーバー", RACE));
+		roundNames.put("FallGuy_Gauntlet_04", new RoundDef("Knight Fever", "ナイト・フィーバー", RACE));
 		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動くスポットライト", HUNT));
 		roundNames.put("FallGuy_DrumTop", new RoundDef("Lily Leapers", "リリー・リーパー", RACE));
 		roundNames.put("FallGuy_Gauntlet_08", new RoundDef("Party Promenade", "パーティープロムナード", RACE));
@@ -289,7 +289,7 @@ class RoundDef {
 		roundNames.put("FallGuy_WallGuys", new RoundDef("Wall Guys", "ウォールガイズ", RACE));
 		roundNames.put("FallGuy_FruitPunch", new RoundDef("Big Shots", "ビッグショット", SURVIVAL));
 		roundNames.put("FallGuy_Block_Party", new RoundDef("Block Party", "ブロックパーティー", SURVIVAL));
-		roundNames.put("FallGuy_HoverboardSurvival", new RoundDef("Hoverboard Heroes", "ホバーボードヒーローズ", SURVIVAL));
+		roundNames.put("FallGuy_HoverboardSurvival", new RoundDef("Hoverboard Heroes", "ホバーボード・ヒーローズ", SURVIVAL));
 		roundNames.put("FallGuy_JumpClub_01", new RoundDef("Jump Club", "ジャンプクラブ", SURVIVAL));
 		roundNames.put("FallGuy_MatchFall", new RoundDef("Perfect Match", "パーフェクトマッチ", LOGIC));
 		roundNames.put("FallGuy_Tunnel_01", new RoundDef("Roll Out", "ロールアウト", SURVIVAL));
@@ -298,8 +298,8 @@ class RoundDef {
 		roundNames.put("FallGuy_FruitBowl", new RoundDef("Sum Fruit", "カウントフルーツ", LOGIC));
 		roundNames.put("FallGuy_TailTag_2", new RoundDef("Tail Tag", "しっぽオニ", HUNT));
 		roundNames.put("FallGuy_Basketfall_01", new RoundDef("Basketfall", "バスケットフォール", TEAM));
-		roundNames.put("FallGuy_EggGrab", new RoundDef("Egg Scramble", "エッグスクランブル", TEAM));
-		roundNames.put("FallGuy_EggGrab_02", new RoundDef("Egg Siege", "エッグキャッスル", TEAM));
+		roundNames.put("FallGuy_EggGrab", new RoundDef("Egg Scramble", "エッグ・スクランブル", TEAM));
+		roundNames.put("FallGuy_EggGrab_02", new RoundDef("Egg Siege", "エッグ・キャッスル", TEAM));
 		roundNames.put("FallGuy_FallBall_5", new RoundDef("Fall Ball", "フォールボール", TEAM));
 		roundNames.put("FallGuy_BallHogs_01", new RoundDef("Hoarders", "ためこみ合戦", TEAM));
 		roundNames.put("FallGuy_Hoops_01", new RoundDef("Hoopsie Daisy", "フープ・ループ・ゴール", TEAM));
@@ -827,7 +827,6 @@ class FGReader extends TailerListenerAdapter {
 
 	//////////////////////////////////////////////////////////////////
 	int readState = 0;
-	int playerCount = 0;
 	int qualifiedCount = 0;
 	int eliminatedCount = 0;
 	boolean isFinal = false;
@@ -849,6 +848,7 @@ class FGReader extends TailerListenerAdapter {
 
 	static Pattern patternServer = Pattern
 			.compile("\\[StateConnectToGame\\] We're connected to the server! Host = ([^:]+)");
+
 	static Pattern patternShowName = Pattern.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
 	//	static Pattern patternShow = Pattern
 	//			.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
@@ -856,6 +856,7 @@ class FGReader extends TailerListenerAdapter {
 	static Pattern patternMatchStart2 = Pattern.compile("\\[StateMatchmaking\\] Begin party communications");
 	static Pattern patternStartGame = Pattern.compile(
 			"\\[StateGameLoading\\] Loading game level scene ([^\\s]+) - frame (\\d+)");
+
 	static Pattern patternPlayerSpawn = Pattern.compile(
 			"\\[CameraDirector\\] Adding Spectator target (.+) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
 	static Pattern patternPlayerSpawn2 = Pattern.compile(
@@ -888,6 +889,13 @@ class FGReader extends TailerListenerAdapter {
 	private void parseLine(String line) {
 		Matcher m = patternServer.matcher(line);
 		if (m.find()) {
+			String showName = "_";
+			long id = (int) (Math.random() * 65536);
+			Core.addMatch(new Match(showName, id));
+			System.out.println("DETECT SHOW STARTING");
+			readState = ROUND_DETECTING;
+			listener.showUpdated();
+
 			String ip = m.group(1);
 			if (!ip.equals(Core.serverIp)) {
 				System.out.println("new server detected: " + ip);
@@ -906,24 +914,6 @@ class FGReader extends TailerListenerAdapter {
 					}
 				}
 			}
-		}
-		m = patternMatchStart.matcher(line);
-		if (m.find()) {
-			String showName = m.group(1);
-			long id = (int) (Math.random() * 65536);
-			Core.addMatch(new Match(showName, id));
-			System.out.println("DETECT SHOW STARTING " + showName);
-			readState = ROUND_DETECTING;
-			listener.showUpdated();
-		}
-		m = patternMatchStart2.matcher(line);
-		if (m.find()) {
-			String showName = "_";
-			long id = (int) (Math.random() * 65536);
-			Core.addMatch(new Match(showName, id));
-			System.out.println("DETECT SHOW STARTING squad ?");
-			readState = ROUND_DETECTING;
-			listener.showUpdated();
 		}
 		switch (readState) {
 		case SHOW_DETECTING: // start show or round detection
@@ -946,7 +936,6 @@ class FGReader extends TailerListenerAdapter {
 				Core.addRound(new Round(roundName, frame, isFinal, Core.getCurrentMatch()));
 				System.out.println("DETECT STARTING " + roundName + " frame=" + frame);
 				readState = MEMBER_DETECTING;
-				playerCount = 0;
 			}
 			break;
 		case MEMBER_DETECTING: // join detection
@@ -966,11 +955,10 @@ class FGReader extends TailerListenerAdapter {
 			if (m.find()) {
 				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
 				int playerId = Integer.parseUnsignedInt(m.group(2));
-				playerCount += 1;
 				Player p = Core.getCurrentRound().byId.get(playerId);
 				if (p != null)
 					p.objectId = playerObjectId;
-				//System.out.println("playerId=" + playerId + " objectId=" + playerObjectId);
+				// System.out.println("playerId=" + playerId + " objectId=" + playerObjectId);
 				break;
 			}
 			if (line.contains("[StateGameLoading] Starting the game.")) {
@@ -1017,7 +1005,7 @@ class FGReader extends TailerListenerAdapter {
 					player.win = succeeded;
 					if (succeeded) {
 						if (player.score == 0)
-							player.score = playerCount - qualifiedCount;
+							player.score = Core.getCurrentRound().byId.size() - qualifiedCount;
 						qualifiedCount += 1;
 						player.ranking = qualifiedCount;
 						System.out.println("Qualified " + player + " rank=" + player.ranking + " " + player.score);
