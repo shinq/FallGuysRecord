@@ -601,7 +601,7 @@ class SnipeRankingMaker extends RankingMaker {
 
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.participationCount = stat.matches.size();
+		stat.totalScore = stat.participationCount = stat.matches.size();
 		if (r.isFinal && p.qualified != null && p.qualified) {
 			stat.winCount += 1;
 		}
