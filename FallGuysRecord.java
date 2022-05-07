@@ -1374,7 +1374,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 					buf.append(" ").append(Core.pad(s.getScore())).append("pt sq=").append(s.squadId).append("\n");
 					for (Player p : s.members)
-						buf.append("  ").append(p.qualified == null ? "　" : p.qualified ? "○" : "✕")
+						buf.append(Core.myName.equals(p.name) ? "★" : "　")
+								.append(p.qualified == null ? "　" : p.qualified ? "○" : "✕")
 								.append(Core.pad(p.score)).append("(").append(Core.pad(p.finalScore)).append(")")
 								.append(" ").append(p.name).append("\n");
 				}
@@ -1386,8 +1387,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				if (p.squadId > 0)
 					buf.append(" sq=").append(Core.pad(p.squadId)).append(" ");
 				buf.append(" pt=").append(Core.pad(p.score)).append("(").append(Core.pad(p.finalScore)).append(")")
-						.append("\t");
-				buf.append(p.name).append("\n");
+						.append(" ");
+				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p.name).append("\n");
 			}
 		}
 		roundResultArea.setText(new String(buf));
