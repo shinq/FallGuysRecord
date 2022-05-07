@@ -587,31 +587,6 @@ class CandyRankingMaker extends RankingMaker {
 	}
 }
 
-// match 単位で、存在した回数ランキング。自分にスナイプした回数順ということ。
-class SnipeRankingMaker extends RankingMaker {
-	@Override
-	public String toString() {
-		return "Snipes";
-	}
-
-	@Override
-	public String getDesc() {
-		return "マッチにいた回数順表示です。１位は必然的に自分になります。分子は優勝回数になっています。";
-	}
-
-	@Override
-	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		if (p.qualified == null)
-			return; // 結果の出ていないものは集計から除外するか
-		stat.additional.put("match_" + r.match.id, r.isFinal && p.qualified != null && p.qualified ? "1" : "0");
-		stat.totalScore = stat.additional.size();
-		stat.participationCount = stat.additional.size(); // match count
-		stat.winCount = 0;
-		for (String v : stat.additional.values())
-			stat.winCount += Integer.parseInt(v); // final win の回数
-	}
-}
-
 class Core {
 	static Object listLock = new Object();
 
@@ -1161,14 +1136,14 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.add(label);
 
 		// under
-		myStatLabel = new JLabel("0勝 / 0試合 (0.0%)");
+		myStatLabel = new JLabel("");
 		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 20));
 		l.putConstraint(SpringLayout.WEST, myStatLabel, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, myStatLabel, -10, SpringLayout.SOUTH, p);
 		myStatLabel.setPreferredSize(new Dimension(300, 20));
 		p.add(myStatLabel);
 
-		pingLabel = new JLabel("PING:");
+		pingLabel = new JLabel("");
 		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, 16));
 		l.putConstraint(SpringLayout.WEST, pingLabel, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, pingLabel, -10, SpringLayout.SOUTH, p);
@@ -1188,7 +1163,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingMakerSel.addItem(new SquadsRankingMaker());
 		rankingMakerSel.addItem(new FallBallRankingMaker());
 		rankingMakerSel.addItem(new CandyRankingMaker());
-		rankingMakerSel.addItem(new SnipeRankingMaker());
 		rankingMakerSel.addItemListener(ev -> {
 			Core.rankingMaker = (RankingMaker) rankingMakerSel.getSelectedItem();
 			rankingDescLabel.setText(Core.rankingMaker.getDesc());
