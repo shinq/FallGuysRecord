@@ -24,8 +24,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,9 +50,10 @@ import org.apache.commons.io.input.TailerListenerAdapter;
 //集計後のプレイヤーごと
 class PlayerStat {
 	String name; // for user identication
+	Set<Match> matches = new HashSet<Match>(); // 参加match。
 	int totalScore;
-	int roundCount;
-	int winCount;
+	int participationCount; // rate 分母。round または match 数。RankingMaker による。
+	int winCount; // rate 分子。優勝やクリアなど。RankingMaker による。
 	Map<String, String> additional = new HashMap<String, String>(); // 独自の統計を使う場合用領域
 
 	public PlayerStat(String name) {
@@ -58,20 +61,10 @@ class PlayerStat {
 	}
 
 	public double getRate() {
-		return Core.calRate(winCount, roundCount);
+		return Core.calRate(winCount, participationCount);
 	}
 
-	/*
-	public double getRateSameteam() {
-		return Core.calRate(sameteam, round);
-	}
-
-	public double getRateSameteamWin() {
-		return Core.calRate(sameteamWin, sameteam);
-	}
-	*/
-
-	public int getInt(String key) {
+	public int getIntAdditional(String key) {
 		String v = additional.get(key);
 		try {
 			return Integer.parseInt(v);
@@ -94,7 +87,7 @@ class Player {
 	int partyId;
 	int ranking; // rank of current round
 
-	Boolean win;
+	Boolean qualified;
 	int score; // 独自の基準でスコア付したい場合用
 
 	Player(String name, int id, int squadId, int partyId) {
@@ -130,7 +123,7 @@ class Round {
 	boolean fixed; // ステージ完了まで読み込み済み
 	boolean isFinal;
 	String name;
-	long id; // 過去に読み込んだステージであるかの判定用。厳密ではないが frame 数なら衝突確率は低い。
+	long id; // 過去に読み込んだステージであるかの判定用。厳密ではないが frame 数なら衝突確率は低い。start 値で良いかも。
 	Date start;
 	Date end;
 	Map<String, Player> byName = new HashMap<String, Player>();
@@ -228,7 +221,7 @@ class Round {
 class Match {
 	boolean fixed; // 完了まで読み込み済み
 	String name;
-	long id; // 過去に読み込んだステージであるかの判定用。厳密ではないが frame 数なら衝突確率は低い。
+	long id; // 過去に読み込んだステージであるかの判定用。仮。start 値で良いかも。
 	Date start;
 	Date end;
 	List<Round> rounds = new ArrayList<Round>();
@@ -261,7 +254,7 @@ class RoundDef {
 		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", HUNT));
 		roundNames.put("FallGuy_BiggestFan", new RoundDef("Big Fans", "ビッグファン", RACE));
 		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", HUNT));
-		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", HUNT));
+		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", TEAM));
 		roundNames.put("FallGuy_DoorDash", new RoundDef("Door Dash", "ドアダッシュ", RACE));
 		roundNames.put("FallGuy_Gauntlet_02_01", new RoundDef("Dizzy Heights", "スピンレース", RACE));
 		roundNames.put("FallGuy_IceClimb_01", new RoundDef("Freezy Peak", "スノーマウンテン", RACE));
@@ -335,20 +328,24 @@ class RankingMaker {
 		return "Final進出者のみ。進出に付き10pt。優勝で更に+20pt。";
 	}
 
-	// このラウンドを集計対象とするかどうかを判定
+	// 集計対象外のマッチであるかを判定する。参加マッチ数計測のためのもの。
+	// calcTotalScore はこれが true の場合のみ呼ばれる。
 	public boolean isEnable(Round r) {
-		if (!r.fixed)
-			return false;
-		// final のみ
-		return r.isFinal;
+		return true;
 	}
 
-	// stat.totalScore を設定する。
+	// stat.participationCount / winCount / totalScore を設定する。
+	// それぞれをどのような数値にするかは Maker 次第とする。
+	// fixed round ごとに呼ばれる。対象外マッチ/ラウンドならなにもしないように実装する。
+	// default は参加マッチ数 / 優勝数 / final で10 & win で30
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
+		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
 			stat.totalScore += 10;
-			if (p.win != null && p.win)
+			if (p.qualified != null && p.qualified) {
+				stat.winCount += 1;
 				stat.totalScore += 20;
+			}
 			return;
 		}
 	}
@@ -382,21 +379,21 @@ class RankingMaker {
 		int internalNo = 0;
 		int dispNo = 0;
 		PlayerStat prev = null;
-		for (PlayerStat player : list) {
-			if (player.totalScore <= 0) // スコア０を表示するかどうかはモードにも依存するかもしれないがひとまず除外
+		for (PlayerStat stat : list) {
+			if (stat.totalScore <= 0) // スコア０を表示するかどうかはモードにも依存するかもしれないがひとまず除外
 				continue;
-			if (player.roundCount >= minMatches) {
+			if (stat.participationCount >= minMatches) {
 				internalNo += 1;
-				if (prev == null || comp.compare(player, prev) != 0) {
+				if (prev == null || comp.compare(stat, prev) != 0) {
 					dispNo = internalNo;
 				}
 				buf.append(Core.pad(dispNo)).append(" ");
-				prev = player;
+				prev = stat;
 
-				buf.append("(").append(Core.pad(player.winCount)).append("/").append(Core.pad(player.roundCount))
-						.append(") ").append(String.format("%6.2f", player.getRate()))
-						.append("% ").append(String.format("%3d", player.totalScore)).append("pt");
-				buf.append(" ").append(player.name).append("\n");
+				buf.append("(").append(Core.pad(stat.winCount)).append("/").append(Core.pad(stat.participationCount))
+						.append(") ").append(String.format("%6.2f", stat.getRate()))
+						.append("% ").append(String.format("%3d", stat.totalScore)).append("pt");
+				buf.append(" ").append(stat.name).append("\n");
 			}
 		}
 		return new String(buf);
@@ -415,31 +412,23 @@ class FeedFirstRankingMaker extends RankingMaker {
 		return "race/hunt １位4pt。決勝進出10pt。優勝30pt で計算。";
 	}
 
-	// このラウンドを集計対象とするかどうかを判定
-	@Override
-	public boolean isEnable(Round r) {
-		if (!r.fixed)
-			return false;
-		if (r.isFinal)
-			return true;
-		// 順位に意味のある種目のみ
-		RoundDef def = RoundDef.get(r.name);
-		if (def.type == RoundDef.RACE || def.type == RoundDef.HUNT)
-			return true;
-		return false;
-	}
-
-	// stat.totalScore を設定する。
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
+		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
 			stat.totalScore += 10;
-			if (p.win != null && p.win)
+			if (p.qualified != null && p.qualified) {
+				stat.winCount += 1;
 				stat.totalScore += 20;
+			}
 			return;
 		}
-		if (p.ranking == 1) // 1st
-			stat.totalScore += 4;
+		// 順位に意味のある種目のみ
+		RoundDef def = RoundDef.get(r.name);
+		if (def.type == RoundDef.RACE || def.type == RoundDef.HUNT) {
+			if (p.ranking == 1) // 1st
+				stat.totalScore += 4;
+		}
 	}
 }
 
@@ -455,28 +444,21 @@ class SquadsRankingMaker extends RankingMaker {
 		return "squads として優勝していれば優勝としてカウント。決勝進出10pt。優勝30pt で計算。";
 	}
 
-	// このラウンドを集計対象とするかどうかを判定
 	@Override
 	public boolean isEnable(Round r) {
-		if (!r.fixed)
-			return false;
 		// squadId のあるもののみ
-		if (r.byId.size() == 0 || r.byId.values().iterator().next().squadId == 0)
-			return false;
-		return r.isFinal;
+		return r.byId.size() > 0 && r.byId.values().iterator().next().squadId != 0;
 	}
 
-	// stat.totalScore を設定する。
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
+		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
 			stat.totalScore += 10;
 			for (Player member : r.getSquad(p.squadId).members) {
-				if (member.win != null && member.win) {
+				if (member.qualified != null && member.qualified) {
+					stat.winCount += 1;
 					stat.totalScore += 20;
-					// 自身が優勝でない場合優勝数追加
-					if (p.win == null || !p.win)
-						stat.winCount += 1;
 					return;
 				}
 			}
@@ -496,21 +478,18 @@ class FallBallRankingMaker extends RankingMaker {
 		return "FallBall のみの勝率。";
 	}
 
-	// このラウンドを集計対象とするかどうかを判定
 	@Override
 	public boolean isEnable(Round r) {
-		if (!r.fixed)
-			return false;
 		// fallball custom round のみ
-		if (r.name.equals("FallGuy_FallBall_5"))
-			return true;
-		return false;
+		return r.name.equals("FallGuy_FallBall_5");
 	}
 
-	// stat.totalScore を設定する。
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.totalScore += p.win == Boolean.TRUE ? 1 : 0;
+		stat.participationCount += 1; // 参加 round 数
+		if (p.qualified != null && p.qualified)
+			stat.winCount += 1;
+		stat.totalScore += p.qualified == Boolean.TRUE ? 1 : 0;
 	}
 }
 
@@ -526,29 +505,26 @@ class CandyRankingMaker extends RankingMaker {
 		return "Sweet Thieves 専用集計です。total は切断も込の値。thief/guard はそれぞれのチーム別の戦績で最後までやった試合のデータです。";
 	}
 
-	// このラウンドを集計対象とするかどうかを判定
 	@Override
 	public boolean isEnable(Round r) {
-		if (!r.fixed)
-			return false;
 		// thieves のみ
-		if ("FallGuy_Invisibeans".equals(r.name))
-			return true;
-		return false;
+		return "FallGuy_Invisibeans".equals(r.name);
 	}
 
-	// stat.totalScore を設定する。
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		if (p.win == null)
-			return; // 結果の出ていないものは集計から除外するか
+		stat.participationCount += 1;
+		if (p.qualified != null && p.qualified)
+			stat.winCount += 1;
+		if (p.qualified == null)
+			return; // 結果の出ていないものは個別集計から除外する
 		boolean isGuard = false;
-		boolean myResult = p.win != null && p.win;
+		boolean myResult = p.qualified != null && p.qualified;
 		int sameResultPlayers = 0;
 		stat.totalScore += myResult ? 1 : 0;
 
 		for (Player o : r.byId.values())
-			if (o.win != null && myResult == o.win)
+			if (o.qualified != null && myResult == o.qualified)
 				sameResultPlayers += 1;
 		if (sameResultPlayers < r.byId.size() / 2)
 			isGuard = true;
@@ -580,28 +556,30 @@ class CandyRankingMaker extends RankingMaker {
 		int internalNo = 0;
 		int dispNo = 0;
 		PlayerStat prev = null;
-		for (PlayerStat player : list) {
-			if (player.roundCount >= minMatches) {
+		for (PlayerStat stat : list) {
+			if (stat.participationCount >= minMatches) {
 				internalNo += 1;
-				if (prev == null || comp.compare(player, prev) != 0) {
+				if (prev == null || comp.compare(stat, prev) != 0) {
 					dispNo = internalNo;
 				}
-				buf.append(Core.pad(dispNo)).append(" ").append(player.name).append("\n");
-				prev = player;
+				buf.append(Core.pad(dispNo)).append(" ").append(stat.name).append("\n");
+				prev = stat;
 
-				buf.append("  total: ").append(Core.pad(player.winCount)).append("/")
-						.append(Core.pad(player.roundCount))
+				buf.append("  total: ").append(Core.pad(stat.winCount)).append("/")
+						.append(Core.pad(stat.participationCount))
 						.append(" (")
-						.append(String.format("%6.2f", player.getRate())).append("%)\n");
-				buf.append("  thief: ").append(Core.pad(player.getInt("thiefWin")))
-						.append("/").append(Core.pad(player.getInt("thiefMatch"))).append(" (")
+						.append(String.format("%6.2f", stat.getRate())).append("%)\n");
+				buf.append("  thief: ").append(Core.pad(stat.getIntAdditional("thiefWin")))
+						.append("/").append(Core.pad(stat.getIntAdditional("thiefMatch"))).append(" (")
 						.append(String.format("%6.2f",
-								Core.calRate(player.getInt("thiefWin"), player.getInt("thiefMatch"))))
+								Core.calRate(stat.getIntAdditional("thiefWin"),
+										stat.getIntAdditional("thiefMatch"))))
 						.append("%)\n");
-				buf.append("  guard: ").append(Core.pad(player.getInt("guardWin")))
-						.append("/").append(Core.pad(player.getInt("guardMatch"))).append(" (")
+				buf.append("  guard: ").append(Core.pad(stat.getIntAdditional("guardWin")))
+						.append("/").append(Core.pad(stat.getIntAdditional("guardMatch"))).append(" (")
 						.append(String.format("%6.2f",
-								Core.calRate(player.getInt("guardWin"), player.getInt("guardMatch"))))
+								Core.calRate(stat.getIntAdditional("guardWin"),
+										stat.getIntAdditional("guardMatch"))))
 						.append("%)\n");
 			}
 		}
@@ -622,20 +600,12 @@ class SnipeRankingMaker extends RankingMaker {
 	}
 
 	@Override
-	public boolean isEnable(Round r) {
-		if (!r.fixed)
-			return false;
-		return true;
-	}
-
-	// stat.totalScore を設定する。
-	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		if (p.win == null)
+		if (p.qualified == null)
 			return; // 結果の出ていないものは集計から除外するか
-		stat.additional.put("match_" + r.match.id, r.isFinal && p.win != null && p.win ? "1" : "0");
+		stat.additional.put("match_" + r.match.id, r.isFinal && p.qualified != null && p.qualified ? "1" : "0");
 		stat.totalScore = stat.additional.size();
-		stat.roundCount = stat.additional.size(); // match count
+		stat.participationCount = stat.additional.size(); // match count
 		stat.winCount = 0;
 		for (String v : stat.additional.values())
 			stat.winCount += Integer.parseInt(v); // final win の回数
@@ -729,10 +699,10 @@ class Core {
 		synchronized (listLock) {
 			stats.clear();
 			for (Round r : rounds) {
-				// round filter
+				if (!r.fixed)
+					continue;
 				if (!rankingMaker.isEnable(r))
 					continue;
-
 				// このラウンドの参加者の結果を反映
 				for (Player p : r.byName.values()) {
 					PlayerStat stat = stats.get(p.name);
@@ -740,9 +710,7 @@ class Core {
 						stat = new PlayerStat(p.name);
 						stats.put(stat.name, stat);
 					}
-					stat.roundCount += 1;
-					if (p.win != null && p.win)
-						stat.winCount += 1;
+					stat.matches.add(r.match);
 					rankingMaker.calcTotalScore(stat, p, r);
 				}
 			}
@@ -1003,7 +971,7 @@ class FGReader extends TailerListenerAdapter {
 				if (!succeeded)
 					System.out.print("Eliminated for " + playerId + " ");
 				if (player != null) {
-					player.win = succeeded;
+					player.qualified = succeeded;
 					if (succeeded) {
 						if (player.score == 0)
 							player.score = Core.getCurrentRound().byId.size() - qualifiedCount;
@@ -1114,8 +1082,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	JComboBox<String> rankingSortSel;
 	JComboBox<Integer> rankingFilterSel;
 	JComboBox<String> playerSel;
-	JButton removeMemberButton;
-	JComboBox<RankingMaker> rankingMakerSel;
 	JLabel rankingDescLabel;;
 
 	static final int LINE1_Y = 10;
@@ -1210,7 +1176,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.add(pingLabel);
 
 		JScrollPane scroller;
-		rankingMakerSel = new JComboBox<RankingMaker>();
+		JComboBox<RankingMaker> rankingMakerSel = new JComboBox<RankingMaker>();
 		rankingMakerSel.setFont(new Font(fontFamily, Font.BOLD, 12));
 		l.putConstraint(SpringLayout.WEST, rankingMakerSel, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, rankingMakerSel, -10, SpringLayout.NORTH, myStatLabel);
@@ -1292,13 +1258,22 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		playerSel.setPreferredSize(new Dimension(150, 20));
 		p.add(playerSel);
 
-		removeMemberButton = new JButton("ラウンドから参加者を外す");
-		removeMemberButton.setFont(new Font(fontFamily, Font.BOLD, 14));
-		l.putConstraint(SpringLayout.WEST, removeMemberButton, 10, SpringLayout.EAST, playerSel);
-		l.putConstraint(SpringLayout.SOUTH, removeMemberButton, -10, SpringLayout.NORTH, rankingMakerSel);
-		removeMemberButton.setPreferredSize(new Dimension(200, 20));
-		removeMemberButton.addActionListener(ev -> removePlayerOnCurrentMatch());
-		p.add(removeMemberButton);
+		JButton removeMemberFromRoundButton = new JButton("ラウンドから参加者を外す");
+		removeMemberFromRoundButton.setFont(new Font(fontFamily, Font.BOLD, 14));
+		l.putConstraint(SpringLayout.WEST, removeMemberFromRoundButton, 10, SpringLayout.EAST, playerSel);
+		l.putConstraint(SpringLayout.SOUTH, removeMemberFromRoundButton, -10, SpringLayout.NORTH, rankingMakerSel);
+		removeMemberFromRoundButton.setPreferredSize(new Dimension(180, 20));
+		removeMemberFromRoundButton.addActionListener(ev -> removePlayerOnCurrentRound());
+		p.add(removeMemberFromRoundButton);
+
+		JButton removeMemberFromMatchButton = new JButton("マッチから参加者を外す");
+		removeMemberFromMatchButton.setFont(new Font(fontFamily, Font.BOLD, 14));
+		l.putConstraint(SpringLayout.WEST, removeMemberFromMatchButton, 10, SpringLayout.EAST,
+				removeMemberFromRoundButton);
+		l.putConstraint(SpringLayout.SOUTH, removeMemberFromMatchButton, -10, SpringLayout.NORTH, rankingMakerSel);
+		removeMemberFromMatchButton.setPreferredSize(new Dimension(180, 20));
+		removeMemberFromMatchButton.addActionListener(ev -> removePlayerOnCurrentMatch());
+		p.add(removeMemberFromMatchButton);
 
 		this.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
@@ -1396,13 +1371,14 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 					buf.append(" ").append(Core.pad(s.getScore())).append("pt sq=").append(s.squadId).append("\n");
 					for (Player p : s.members)
-						buf.append("  ").append(p.win == null ? "　" : p.win ? "○" : "✕").append(Core.pad(p.score))
+						buf.append("  ").append(p.qualified == null ? "　" : p.qualified ? "○" : "✕")
+								.append(Core.pad(p.score))
 								.append(" ").append(p.name).append("\n");
 				}
 				buf.append("******** solo rank ******").append("\n");
 			}
 			for (Player p : r.byRank()) {
-				buf.append(p.win == null ? "　" : p.win ? "○" : "✕");
+				buf.append(p.qualified == null ? "　" : p.qualified ? "○" : "✕");
 				buf.append(Core.pad(p.ranking));
 				if (p.squadId > 0)
 					buf.append(" sq=").append(Core.pad(p.squadId)).append(" ");
@@ -1472,12 +1448,22 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		//playerSel.setSelectedItem(Core.myName);
 	}
 
-	private void removePlayerOnCurrentMatch() {
+	private void removePlayerOnCurrentRound() {
 		String name_selected = (String) playerSel.getSelectedItem();
 		Round r = getSelectedRound();
 		r.remove(name_selected);
 		Core.updateStats();
 		roundSelected(r);
+		displayRanking();
+	}
+
+	private void removePlayerOnCurrentMatch() {
+		String name_selected = (String) playerSel.getSelectedItem();
+		Match m = getSelectedMatch();
+		for (Round r : m == null ? Core.rounds : m.rounds)
+			r.remove(name_selected);
+		Core.updateStats();
+		roundSelected(getSelectedRound());
 		displayRanking();
 	}
 
@@ -1488,6 +1474,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingArea.setCaretPosition(0);
 		PlayerStat own = Core.getMyStat();
 		if (own != null)
-			myStatLabel.setText(own.winCount + "勝 / " + own.roundCount + "試合 (" + own.getRate() + "%)");
+			myStatLabel
+					.setText("自分の戦績: " + own.winCount + " / " + own.participationCount + " (" + own.getRate() + "%)");
 	}
 }
