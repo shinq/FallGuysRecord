@@ -41,6 +41,7 @@ import javax.swing.SpringLayout;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.input.Tailer;
 import org.apache.commons.io.input.TailerListenerAdapter;
 
@@ -1072,7 +1073,6 @@ class FGReader extends TailerListenerAdapter {
 public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	static FallGuysRecord frame;
 	static FGReader reader;
-	static String path_str;
 	static String monospacedFontFamily = "MS Gothic";
 	static String fontFamily = "Meiryo UI";
 
@@ -1095,12 +1095,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				size_y = Integer.parseInt(value[3]);
 			}
 		} catch (FileNotFoundException e) {
-		}
-		try (BufferedReader br = new BufferedReader(new FileReader("path.ini"))) {
-			String str;
-			while ((str = br.readLine()) != null) {
-				path_str = str;
-			}
 		}
 
 		frame = new FallGuysRecord();
@@ -1331,7 +1325,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 
 		// start log read
-		reader = new FGReader(new File(path_str), this);
+		reader = new FGReader(
+				new File(FileUtils.getUserDirectory(), "AppData/LocalLow/Mediatonic/FallGuys_client/Player.log"), this);
 		reader.start();
 	}
 
