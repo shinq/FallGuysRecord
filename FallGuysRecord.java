@@ -1396,7 +1396,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 					buf.append(" ").append(Core.pad(s.getScore())).append("pt sq=").append(s.squadId).append("\n");
 					for (Player p : s.members)
-						buf.append("  ").append(Core.pad(p.score)).append(" ").append(p.name).append("\n");
+						buf.append("  ").append(p.win == null ? "　" : p.win ? "○" : "✕").append(Core.pad(p.score))
+								.append(" ").append(p.name).append("\n");
 				}
 				buf.append("******** solo rank ******").append("\n");
 			}
