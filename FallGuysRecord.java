@@ -88,7 +88,8 @@ class Player {
 	int ranking; // rank of current round
 
 	Boolean qualified;
-	int score; // 独自の基準でスコア付したい場合用
+	int score; // ラウンド中のスコアあるいは順位スコア
+	int finalScore; // ラウンド終了後に出力されたスコア
 
 	Player(String name, int id, int squadId, int partyId) {
 		this.name = name;
@@ -167,15 +168,7 @@ class Round {
 
 	public ArrayList<Player> byRank() {
 		ArrayList<Player> list = new ArrayList<Player>(byName.values());
-		Collections.sort(list, new Comparator<Player>() {
-			@Override
-			public int compare(Player p1, Player p2) {
-				int v = (int) Math.signum(p2.score - p1.score);
-				if (v != 0)
-					return v;
-				return (int) Math.signum(p1.ranking - p2.ranking);
-			}
-		});
+		Collections.sort(list, new Core.PlayerComparator());
 		return list;
 	}
 
@@ -193,12 +186,7 @@ class Round {
 		}
 		ArrayList<Squad> list = new ArrayList<Squad>(bySquadId.values());
 		for (Squad s : list)
-			Collections.sort(s.members, new Comparator<Player>() {
-				@Override
-				public int compare(Player p1, Player p2) {
-					return (int) Math.signum(p2.score - p1.score);
-				}
-			});
+			Collections.sort(s.members, new Core.PlayerComparator());
 		Collections.sort(list, new Comparator<Squad>() {
 			@Override
 			public int compare(Squad p1, Squad p2) {
@@ -360,14 +348,14 @@ class RankingMaker {
 		Comparator<PlayerStat> comp;
 		switch (sort) {
 		case 1:
-			comp = new Core.PlayerComparatorWin();
+			comp = new Core.StatComparatorWin();
 			break;
 		case 2:
-			comp = new Core.PlayerComparatorRate();
+			comp = new Core.StatComparatorRate();
 			break;
 		case 0:
 		default:
-			comp = new Core.PlayerComparatorScore();
+			comp = new Core.StatComparatorScore();
 			break;
 		}
 		Collections.sort(list, comp);
@@ -713,7 +701,7 @@ class Core {
 		}
 	}
 
-	static class PlayerComparatorScore implements Comparator<PlayerStat> {
+	static class StatComparatorScore implements Comparator<PlayerStat> {
 		@Override
 		public int compare(PlayerStat p1, PlayerStat p2) {
 			int v = (int) Math.signum(p2.totalScore - p1.totalScore);
@@ -724,39 +712,45 @@ class Core {
 		}
 	}
 
-	static class PlayerComparatorWin implements Comparator<PlayerStat> {
+	static class StatComparatorWin implements Comparator<PlayerStat> {
 		@Override
 		public int compare(PlayerStat p1, PlayerStat p2) {
 			int v = (int) Math.signum(p2.winCount - p1.winCount);
 			if (v != 0)
 				return v;
 			// 第２ソートを rate とする。
-			return (int) Math.signum(p2.getRate() - p1.getRate());
+			v = (int) Math.signum(p2.getRate() - p1.getRate());
+			if (v != 0)
+				return v;
+			// 第３ソートを score とする。
+			return (int) Math.signum(p2.totalScore - p1.totalScore);
 		}
 	}
 
-	static class PlayerComparatorRate implements Comparator<PlayerStat> {
+	static class StatComparatorRate implements Comparator<PlayerStat> {
 		@Override
 		public int compare(PlayerStat p1, PlayerStat p2) {
-			return (int) Math.signum(p2.getRate() - p1.getRate());
+			int v = (int) Math.signum(p2.getRate() - p1.getRate());
+			if (v != 0)
+				return v;
+			// 第２ソートを score とする。
+			return (int) Math.signum(p2.totalScore - p1.totalScore);
 		}
 	}
 
-	/*
-	static class PlayerComparatorSameteam implements Comparator<PlayerStat> {
+	static class PlayerComparator implements Comparator<Player> {
 		@Override
-		public int compare(PlayerStat p1, PlayerStat p2) {
-			return p1.getRateSameteam() > p2.getRateSameteam() ? -1 : 1;
+		public int compare(Player p1, Player p2) {
+			int v = (int) Math.signum(p2.finalScore - p1.finalScore);
+			if (v != 0)
+				return v;
+			v = (int) Math.signum(p2.score - p1.score);
+			if (v != 0)
+				return v;
+			return (int) Math.signum(p1.ranking - p2.ranking);
 		}
 	}
 
-	static class PlayerComparatorSameteamWin implements Comparator<PlayerStat> {
-		@Override
-		public int compare(PlayerStat p1, PlayerStat p2) {
-			return p1.getRateSameteamWin() > p2.getRateSameteamWin() ? -1 : 1;
-		}
-	}
-	*/
 }
 
 // wrap tailer
@@ -943,7 +937,7 @@ class FGReader extends TailerListenerAdapter {
 			}
 			break;
 		case RESULT_DETECTING: // result detection
-			// score update duaring raound
+			// score update duaring round
 			m = patternScoreUpdated.matcher(line);
 			if (m.find()) {
 				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
@@ -983,19 +977,18 @@ class FGReader extends TailerListenerAdapter {
 				}
 				break;
 			}
-			// squad score log
+			// score log
 			// round over より後に出力されている。
 			m = patternPlayerResult2.matcher(line);
 			if (m.find()) {
 				int playerId = Integer.parseUnsignedInt(m.group(1));
-				int score = Integer.parseUnsignedInt(m.group(2));
+				int finalScore = Integer.parseUnsignedInt(m.group(2));
 				boolean isFinal = "True".equals(m.group(3));
 				Player player = Core.getCurrentRound().byId.get(playerId);
 				System.out.println(
-						"Result for " + playerId + " score=" + score + " isFinal=" + isFinal + " " + player);
+						"Result for " + playerId + " score=" + finalScore + " isFinal=" + isFinal + " " + player);
 				if (player != null) {
-					//player.win = ;
-					player.score = score;
+					player.finalScore = finalScore;
 				}
 				break;
 			}
@@ -1149,7 +1142,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(100, 20);
 		p.add(label);
-		label = new JLabel("【ラウンド結果】");
+		label = new JLabel("【ラウンド詳細】");
 		label.setFont(new Font(fontFamily, Font.BOLD, 14));
 		l.putConstraint(SpringLayout.WEST, label, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
@@ -1368,7 +1361,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					buf.append(" ").append(Core.pad(s.getScore())).append("pt sq=").append(s.squadId).append("\n");
 					for (Player p : s.members)
 						buf.append("  ").append(p.qualified == null ? "　" : p.qualified ? "○" : "✕")
-								.append(Core.pad(p.score))
+								.append(Core.pad(p.score)).append("(").append(Core.pad(p.finalScore)).append(")")
 								.append(" ").append(p.name).append("\n");
 				}
 				buf.append("******** solo rank ******").append("\n");
@@ -1378,7 +1371,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				buf.append(Core.pad(p.ranking));
 				if (p.squadId > 0)
 					buf.append(" sq=").append(Core.pad(p.squadId)).append(" ");
-				buf.append(" pt=").append(Core.pad(p.score)).append("\t");
+				buf.append(" pt=").append(Core.pad(p.score)).append("(").append(Core.pad(p.finalScore)).append(")")
+						.append("\t");
 				buf.append(p.name).append("\n");
 			}
 		}
