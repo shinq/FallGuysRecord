@@ -385,6 +385,7 @@ class RankingMaker {
 				buf.append(" ").append(stat.name).append("\n");
 			}
 		}
+		buf.append("total: ").append(internalNo).append("\n");
 		return new String(buf);
 	}
 }
