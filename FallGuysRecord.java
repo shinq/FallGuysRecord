@@ -587,6 +587,27 @@ class CandyRankingMaker extends RankingMaker {
 	}
 }
 
+// match 単位で、存在した回数ランキング。自分にスナイプした回数順ということ。
+class SnipeRankingMaker extends RankingMaker {
+	@Override
+	public String toString() {
+		return "Snipes";
+	}
+
+	@Override
+	public String getDesc() {
+		return "マッチにいた回数順表示です。１位は必然的に自分になります。分子は優勝回数になっています。";
+	}
+
+	@Override
+	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
+		stat.participationCount = stat.matches.size();
+		if (r.isFinal && p.qualified != null && p.qualified) {
+			stat.winCount += 1;
+		}
+	}
+}
+
 class Core {
 	static Object listLock = new Object();
 
@@ -1163,6 +1184,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingMakerSel.addItem(new SquadsRankingMaker());
 		rankingMakerSel.addItem(new FallBallRankingMaker());
 		rankingMakerSel.addItem(new CandyRankingMaker());
+		rankingMakerSel.addItem(new SnipeRankingMaker());
 		rankingMakerSel.addItemListener(ev -> {
 			Core.rankingMaker = (RankingMaker) rankingMakerSel.getSelectedItem();
 			rankingDescLabel.setText(Core.rankingMaker.getDesc());
