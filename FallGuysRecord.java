@@ -445,6 +445,7 @@ class SquadsRankingMaker extends RankingMaker {
 		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
 			stat.totalScore += 10;
+			// メンバーの誰かに優勝者がいれば優勝とみなす。
 			for (Player member : r.getSquad(p.squadId).members) {
 				if (member.qualified != null && member.qualified) {
 					stat.winCount += 1;
