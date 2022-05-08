@@ -1359,7 +1359,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		updatePlayerSel(r);
 		StringBuilder buf = new StringBuilder();
 		if (r.isFinal)
-			buf.append("********** FINAL ***********\n");
+			buf.append("********** FINAL **********\n");
 		synchronized (Core.listLock) {
 			List<Squad> squads = r.bySquadRank();
 			if (squads != null) {
@@ -1374,22 +1374,23 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					buf.append(Core.pad(dispNo)).append(" ");
 					prev = s;
 
-					buf.append(" ").append(Core.pad(s.getScore())).append("pt sq=").append(s.squadId).append("\n");
+					buf.append(" ").append(Core.pad(s.getScore())).append("pt ___________ sq=").append(s.squadId).append("\n");
 					for (Player p : s.members)
-						buf.append(Core.myName.equals(p.name) ? "★" : "　")
+						buf.append(Core.myName.equals(p.name) ? "★" : p.partyId != 0 ? "Ｐ" : "　")
 								.append(p.qualified == null ? "　" : p.qualified ? "○" : "✕")
-								.append(Core.pad(p.score)).append("(").append(Core.pad(p.finalScore)).append(")")
+								.append(Core.pad(p.score)).append("pt(").append(Core.pad(p.finalScore)).append(")")
 								.append(" ").append(p.name).append("\n");
 				}
-				buf.append("******** solo rank ******").append("\n");
+				buf.append("********** solo rank **********\n");
+				buf.append(" rnk sq   score  pt   name\n");
 			}
 			for (Player p : r.byRank()) {
 				buf.append(p.qualified == null ? "　" : p.qualified ? "○" : "✕");
 				buf.append(Core.pad(p.ranking));
 				if (p.squadId > 0)
-					buf.append(" sq=").append(Core.pad(p.squadId)).append(" ");
-				buf.append(" pt=").append(Core.pad(p.score)).append("(").append(Core.pad(p.finalScore)).append(")")
-						.append(" ");
+					buf.append(" ").append(Core.pad(p.squadId)).append(" ");
+				buf.append(Core.pad(p.score)).append("pt(").append(Core.pad(p.finalScore)).append(")")
+						.append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
 				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p.name).append("\n");
 			}
 		}
