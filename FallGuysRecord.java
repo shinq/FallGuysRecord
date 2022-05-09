@@ -331,7 +331,7 @@ class RankingMaker {
 		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
 			stat.totalScore += 10;
-			if (p.qualified != null && p.qualified) {
+			if (p.qualified == Boolean.TRUE) {
 				stat.winCount += 1;
 				stat.totalScore += 20;
 			}
@@ -407,7 +407,7 @@ class FeedFirstRankingMaker extends RankingMaker {
 		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
 			stat.totalScore += 10;
-			if (p.qualified != null && p.qualified) {
+			if (p.qualified == Boolean.TRUE) {
 				stat.winCount += 1;
 				stat.totalScore += 20;
 			}
@@ -447,7 +447,7 @@ class SquadsRankingMaker extends RankingMaker {
 			stat.totalScore += 10;
 			// メンバーの誰かに優勝者がいれば優勝とみなす。
 			for (Player member : r.getSquad(p.squadId).members) {
-				if (member.qualified != null && member.qualified) {
+				if (member.qualified == Boolean.TRUE) {
 					stat.winCount += 1;
 					stat.totalScore += 20;
 					return;
@@ -457,7 +457,7 @@ class SquadsRankingMaker extends RankingMaker {
 	}
 }
 
-//FallBall Cup のみ
+// FallBall Cup のみ
 class FallBallRankingMaker extends RankingMaker {
 	@Override
 	public String toString() {
@@ -478,13 +478,14 @@ class FallBallRankingMaker extends RankingMaker {
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount += 1; // 参加 round 数
-		if (p.qualified != null && p.qualified)
+		if (p.qualified == Boolean.TRUE) {
 			stat.winCount += 1;
-		stat.totalScore += p.qualified == Boolean.TRUE ? 1 : 0;
+			stat.totalScore += 1;
+		}
 	}
 }
 
-// thieves のみの、ガーディアン、シフ別戦績集計
+// thieves のみの、ガーディアン、シーフ別戦績集計
 class CandyRankingMaker extends RankingMaker {
 	@Override
 	public String toString() {
@@ -505,12 +506,12 @@ class CandyRankingMaker extends RankingMaker {
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount += 1;
-		if (p.qualified != null && p.qualified)
+		if (p.qualified == Boolean.TRUE)
 			stat.winCount += 1;
 		if (p.qualified == null)
 			return; // 結果の出ていないものは個別集計から除外する
 		boolean isGuard = false;
-		boolean myResult = p.qualified != null && p.qualified;
+		boolean myResult = p.qualified == Boolean.TRUE;
 		int sameResultPlayers = 0;
 		stat.totalScore += myResult ? 1 : 0;
 
@@ -593,7 +594,7 @@ class SnipeRankingMaker extends RankingMaker {
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.totalScore = stat.participationCount = stat.matches.size();
-		if (r.isFinal && p.qualified != null && p.qualified) {
+		if (r.isFinal && p.qualified == Boolean.TRUE) {
 			stat.winCount += 1;
 		}
 	}
@@ -637,12 +638,10 @@ class Core {
 	public static final List<Round> rounds = new ArrayList<Round>();
 	public static final Map<String, PlayerStat> stats = new HashMap<String, PlayerStat>();
 
-	public void load() {
-
+	public static void load() {
 	}
 
-	public void save() {
-
+	public static void save() {
 	}
 
 	public static void addMatch(Match m) {
@@ -788,7 +787,11 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	//////////////////////////////////////////////////////////////////
-	int readState = 0;
+	enum ReadState {
+		SHOW_DETECTING, ROUND_DETECTING, MEMBER_DETECTING, RESULT_DETECTING
+	}
+
+	ReadState readState = ReadState.SHOW_DETECTING;
 	int qualifiedCount = 0;
 	int eliminatedCount = 0;
 	boolean isFinal = false;
@@ -843,19 +846,14 @@ class FGReader extends TailerListenerAdapter {
 		return null;
 	}
 
-	static final int SHOW_DETECTING = 0;
-	static final int ROUND_DETECTING = 1;
-	static final int MEMBER_DETECTING = 2;
-	static final int RESULT_DETECTING = 3;
-
 	private void parseLine(String line) {
 		Matcher m = patternServer.matcher(line);
 		if (m.find()) {
 			String showName = "_";
-			long id = (int) (Math.random() * 65536);
+			long id = (int) (Math.random() * 65536); // FIXME
 			Core.addMatch(new Match(showName, id));
 			System.out.println("DETECT SHOW STARTING");
-			readState = ROUND_DETECTING;
+			readState = ReadState.ROUND_DETECTING;
 			listener.showUpdated();
 
 			String ip = m.group(1);
@@ -894,10 +892,10 @@ class FGReader extends TailerListenerAdapter {
 			m = patternStartGame.matcher(line);
 			if (m.find()) {
 				String roundName = m.group(1);
-				long frame = Long.parseUnsignedLong(m.group(2));
+				long frame = Long.parseUnsignedLong(m.group(2)); // FIXME: round id のほうが適切
 				Core.addRound(new Round(roundName, frame, isFinal, Core.getCurrentMatch()));
 				System.out.println("DETECT STARTING " + roundName + " frame=" + frame);
-				readState = MEMBER_DETECTING;
+				readState = ReadState.MEMBER_DETECTING;
 			}
 			break;
 		case MEMBER_DETECTING: // join detection
@@ -928,14 +926,14 @@ class FGReader extends TailerListenerAdapter {
 				Core.getCurrentRound().start = getTime(line);
 				listener.roundStarted();
 				qualifiedCount = eliminatedCount = 0; // reset
-				readState = RESULT_DETECTING;
+				readState = ReadState.RESULT_DETECTING;
 				break;
 			}
 			if (line.contains("[StateMainMenu] Creating or joining lobby")
 					|| line.contains("[StateMatchmaking] Begin matchmaking")) {
 				System.out.println("DETECT BACK TO LOBBY");
 				Core.rounds.remove(Core.rounds.size() - 1); // delete current round
-				readState = SHOW_DETECTING;
+				readState = ReadState.SHOW_DETECTING;
 				break;
 			}
 			break;
@@ -1019,7 +1017,7 @@ class FGReader extends TailerListenerAdapter {
 				Core.getCurrentRound().end = getTime(line);
 				Core.updateStats();
 				listener.roundDone();
-				readState = ROUND_DETECTING;
+				readState = ReadState.ROUND_DETECTING;
 				break;
 			}
 			if (line.contains("== [CompletedEpisodeDto] ==")) {
@@ -1034,7 +1032,7 @@ class FGReader extends TailerListenerAdapter {
 					|| line.contains("[StateMatchmaking] Begin matchmaking")
 					|| line.contains("Changing local player state to: SpectatingEliminated")
 					|| line.contains("[GlobalGameStateClient] SwitchToDisconnectingState")) {
-				readState = SHOW_DETECTING;
+				readState = ReadState.SHOW_DETECTING;
 				break;
 			}
 			break;
@@ -1069,6 +1067,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			}
 		} catch (FileNotFoundException e) {
 		}
+
+		Core.load();
 
 		frame = new FallGuysRecord();
 		frame.setResizable(true);
@@ -1282,6 +1282,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		this.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
+				reader.stop();
 				try {
 					File file = new File("window_pt_size.ini");
 					PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file)));
@@ -1291,16 +1292,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					pw.close();
 				} catch (IOException e1) {
 				}
-				try {
-					File file = new File("result.txt");
-					FileWriter filewriter = new FileWriter(file, true);
-
-					Date d = new Date();
-					SimpleDateFormat d1 = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-					filewriter.write("[" + d1.format(d) + "] " + myStatLabel.getText() + "\n");
-					filewriter.close();
-				} catch (IOException e1) {
-				}
+				Core.save();
 			}
 		});
 
@@ -1374,7 +1366,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					buf.append(Core.pad(dispNo)).append(" ");
 					prev = s;
 
-					buf.append(" ").append(Core.pad(s.getScore())).append("pt ___________ sq=").append(s.squadId).append("\n");
+					buf.append(" ").append(Core.pad(s.getScore())).append("pt ______________ squad=").append(s.squadId)
+							.append("\n");
 					for (Player p : s.members)
 						buf.append(Core.myName.equals(p.name) ? "★" : p.partyId != 0 ? "Ｐ" : "　")
 								.append(p.qualified == null ? "　" : p.qualified ? "○" : "✕")
@@ -1382,13 +1375,13 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 								.append(" ").append(p.name).append("\n");
 				}
 				buf.append("********** solo rank **********\n");
-				buf.append(" rnk sq   score  pt   name\n");
 			}
+			buf.append(" rnk ").append(squads != null ? "sq " : "").append("  score  pt   name\n");
 			for (Player p : r.byRank()) {
 				buf.append(p.qualified == null ? "　" : p.qualified ? "○" : "✕");
-				buf.append(Core.pad(p.ranking));
-				if (p.squadId > 0)
-					buf.append(" ").append(Core.pad(p.squadId)).append(" ");
+				buf.append(Core.pad(p.ranking)).append(" ");
+				if (squads != null)
+					buf.append(Core.pad(p.squadId)).append(" ");
 				buf.append(Core.pad(p.score)).append("pt(").append(Core.pad(p.finalScore)).append(")")
 						.append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
 				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p.name).append("\n");
@@ -1415,9 +1408,10 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 	@Override
 	public void roundUpdated() {
-		SwingUtilities.invokeLater(() -> {
-			roundSelected(getSelectedRound());
-		});
+		if (Core.getCurrentRound() == getSelectedRound())
+			SwingUtilities.invokeLater(() -> {
+				roundSelected(getSelectedRound());
+			});
 	}
 
 	@Override
@@ -1428,18 +1422,18 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	Match getSelectedMatch() {
+		if (matchSel.getSelectedIndex() <= 0)
+			return null;
 		synchronized (Core.listLock) {
-			if (matchSel.getSelectedIndex() <= 0)
-				return null;
 			return Core.matches.get(matchSel.getSelectedIndex() - 1);
 		}
 	}
 
 	Round getSelectedRound() {
+		if (roundsSel.getSelectedIndex() < 0)
+			return null;
 		synchronized (Core.listLock) {
 			Match m = getSelectedMatch();
-			if (roundsSel.getSelectedIndex() < 0)
-				return null;
 			if (m == null)
 				return Core.rounds.get(roundsSel.getSelectedIndex());
 			return m.rounds.get(roundsSel.getSelectedIndex());
