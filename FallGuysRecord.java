@@ -1422,21 +1422,23 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	Match getSelectedMatch() {
-		if (matchSel.getSelectedIndex() <= 0)
+		int matchIndex = matchSel.getSelectedIndex();
+		if (matchIndex < 1)
 			return null;
 		synchronized (Core.listLock) {
-			return Core.matches.get(matchSel.getSelectedIndex() - 1);
+			return Core.matches.get(matchIndex - 1);
 		}
 	}
 
 	Round getSelectedRound() {
-		if (roundsSel.getSelectedIndex() < 0)
+		int roundIndex = roundsSel.getSelectedIndex();
+		if (roundIndex < 0)
 			return null;
 		synchronized (Core.listLock) {
 			Match m = getSelectedMatch();
 			if (m == null)
-				return Core.rounds.get(roundsSel.getSelectedIndex());
-			return m.rounds.get(roundsSel.getSelectedIndex());
+				return Core.rounds.get(roundIndex);
+			return m.rounds.get(roundIndex);
 		}
 	}
 
