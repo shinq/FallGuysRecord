@@ -23,6 +23,7 @@ https://github.com/circumark994/fallballstats
 ## 使い方
 FallGuysRecord.jar をダブルクリックします。
 
+(FallGuysRecord.jar だけをダウンロードして適当なフォルダに置いておけば実行可能です)
 
 ## 機能概要
 * 画面左下のドロップダウンで総合ランキングの集計ポリシーを選択できます。現在は以下を用意。
