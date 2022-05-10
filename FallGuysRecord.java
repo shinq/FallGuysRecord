@@ -113,8 +113,12 @@ class Squad {
 
 	public int getScore() {
 		int score = 0;
-		for (Player p : members)
-			score += p.score;
+		for (Player p : members) {
+			if (p.finalScore > 0)
+				score += p.finalScore;
+			else
+				score += p.score;
+		}
 		return score;
 	}
 }
@@ -189,8 +193,8 @@ class Round {
 			Collections.sort(s.members, new Core.PlayerComparator());
 		Collections.sort(list, new Comparator<Squad>() {
 			@Override
-			public int compare(Squad p1, Squad p2) {
-				return (int) Math.signum(p2.getScore() - p1.getScore());
+			public int compare(Squad s1, Squad s2) {
+				return (int) Math.signum(s2.getScore() - s1.getScore());
 			}
 		});
 		return list;
