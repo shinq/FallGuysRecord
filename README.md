@@ -19,11 +19,10 @@ https://github.com/circumark994/fallballstats
 
 ## 初期設定
 * Java 実行環境をインストールする必要があります。(https://java.com/)
+* ダウンロード：上部の緑の「Code」ボタンから Download ZIP を選んでダウンロードし、展開してください。
 
 ## 使い方
-FallGuysRecord.jar をダブルクリックします。
-
-(FallGuysRecord.jar だけをダウンロードして適当なフォルダに置いておけば実行可能です)
+* FallGuysRecord.jar をダブルクリックします。
 
 ## 機能概要
 * 画面左下のドロップダウンで総合ランキングの集計ポリシーを選択できます。現在は以下を用意。
