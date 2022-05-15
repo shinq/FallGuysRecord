@@ -1051,6 +1051,9 @@ class FGReader extends TailerListenerAdapter {
 
 // UI
 public class FallGuysRecord extends JFrame implements FGReader.Listener {
+	static int FONT_SIZE_RANK;
+	static int FONT_SIZE_DETAIL;
+
 	static FallGuysRecord frame;
 	static FGReader reader;
 	static String monospacedFontFamily = "MS Gothic";
@@ -1066,12 +1069,18 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			prop.load(br);
 		} catch (FileNotFoundException e) {
 		}
+		// default values
 		String v = prop.getProperty("POINT_1ST");
 		Core.PT_1ST = v == null ? 4 : Integer.parseInt(v, 10);
 		v = prop.getProperty("POINT_FINALS");
 		Core.PT_FINALS = v == null ? 10 : Integer.parseInt(v, 10);
 		v = prop.getProperty("POINT_WIN");
 		Core.PT_WIN = v == null ? 10 : Integer.parseInt(v, 10);
+
+		v = prop.getProperty("FONT_SIZE_RANK");
+		FONT_SIZE_RANK = v == null ? 16 : Integer.parseInt(v, 10);
+		v = prop.getProperty("FONT_SIZE_DETAIL");
+		FONT_SIZE_DETAIL = v == null ? 16 : Integer.parseInt(v, 10);
 
 		int pt_x = 10;
 		int pt_y = 10;
@@ -1230,7 +1239,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.add(rankingDescLabel);
 
 		rankingArea = new JTextArea();
-		rankingArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, 14));
+		rankingArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_RANK));
 		p.add(scroller = new JScrollPane(rankingArea));
 		l.putConstraint(SpringLayout.WEST, scroller, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
@@ -1271,7 +1280,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 
 		roundResultArea = new JTextArea();
-		roundResultArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, 16));
+		roundResultArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_DETAIL));
 		p.add(scroller = new JScrollPane(roundResultArea));
 		l.putConstraint(SpringLayout.WEST, scroller, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.EAST, scroller, -10, SpringLayout.EAST, p);
@@ -1398,7 +1407,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				}
 				buf.append("********** solo rank **********\n");
 			}
-			buf.append(" rnk ").append(squads != null ? "sq " : "").append("  score  pt   name\n");
+			buf.append("rank ").append(squads != null ? "sq " : "").append("  score  pt   name\n");
 			for (Player p : r.byRank()) {
 				buf.append(p.qualified == null ? "　" : p.qualified ? "○" : "✕");
 				buf.append(Core.pad(p.ranking)).append(" ");
