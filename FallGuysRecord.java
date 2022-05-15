@@ -606,6 +606,7 @@ class SnipeRankingMaker extends RankingMaker {
 }
 
 class Core {
+	static boolean LANG_EN = true;
 	static int PT_WIN = 10;
 	static int PT_FINALS = 10;
 	static int PT_1ST = 4;
@@ -1070,7 +1071,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		} catch (FileNotFoundException e) {
 		}
 		// default values
-		String v = prop.getProperty("POINT_1ST");
+		String v = prop.getProperty("LANGUAGE");
+		Core.LANG_EN = v == null || "en".equals(v);
+		v = prop.getProperty("POINT_1ST");
 		Core.PT_1ST = v == null ? 4 : Integer.parseInt(v, 10);
 		v = prop.getProperty("POINT_FINALS");
 		Core.PT_FINALS = v == null ? 10 : Integer.parseInt(v, 10);
@@ -1354,7 +1357,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		synchronized (Core.listLock) {
 			Match m = getSelectedMatch();
 			for (Round r : m == null ? Core.rounds : m.rounds) {
-				model.addElement(RoundDef.get(r.name).dispNameJa);
+				RoundDef def = RoundDef.get(r.name);
+				model.addElement(Core.LANG_EN ? def.dispName : def.dispNameJa);
 			}
 			roundsSel.setSelectedIndex(model.size() - 1);
 			roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
@@ -1367,7 +1371,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		model.clear();
 		synchronized (Core.listLock) {
 			for (Round r : m == null ? Core.rounds : m.rounds) {
-				model.addElement(RoundDef.get(r.name).dispNameJa);
+				RoundDef def = RoundDef.get(r.name);
+				model.addElement(Core.LANG_EN ? def.dispName : def.dispNameJa);
 			}
 		}
 		roundsSel.setSelectedIndex(model.size() - 1);
