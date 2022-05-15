@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -334,10 +335,10 @@ class RankingMaker {
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
-			stat.totalScore += 10;
+			stat.totalScore += Core.PT_FINALS;
 			if (p.qualified == Boolean.TRUE) {
 				stat.winCount += 1;
-				stat.totalScore += 20;
+				stat.totalScore += Core.PT_WIN;
 			}
 			return;
 		}
@@ -403,7 +404,7 @@ class FeedFirstRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return "race/hunt １位4pt。決勝進出10pt。優勝30pt で計算。";
+		return "race/hunt １位時、決勝進出時、優勝時にポイント加算。";
 	}
 
 	@Override
@@ -421,7 +422,7 @@ class FeedFirstRankingMaker extends RankingMaker {
 		RoundDef def = RoundDef.get(r.name);
 		if (def.type == RoundType.RACE || def.type == RoundType.HUNT) {
 			if (p.ranking == 1) // 1st
-				stat.totalScore += 4;
+				stat.totalScore += Core.PT_1ST;
 		}
 	}
 }
@@ -448,12 +449,12 @@ class SquadsRankingMaker extends RankingMaker {
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
-			stat.totalScore += 10;
+			stat.totalScore += Core.PT_FINALS;
 			// メンバーの誰かに優勝者がいれば優勝とみなす。
 			for (Player member : r.getSquad(p.squadId).members) {
 				if (member.qualified == Boolean.TRUE) {
 					stat.winCount += 1;
-					stat.totalScore += 20;
+					stat.totalScore += Core.PT_WIN;
 					return;
 				}
 			}
@@ -605,6 +606,10 @@ class SnipeRankingMaker extends RankingMaker {
 }
 
 class Core {
+	static int PT_WIN = 10;
+	static int PT_FINALS = 10;
+	static int PT_1ST = 4;
+
 	static Object listLock = new Object();
 
 	// utilities
@@ -1055,6 +1060,19 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		//	UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
 		//	UIManager.setLookAndFeel("com.sun.java.swing.plaf.motif.MotifLookAndFeel");
 		UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
+
+		Properties prop = new Properties();
+		try (BufferedReader br = new BufferedReader(new FileReader("settings.ini"))) {
+			prop.load(br);
+		} catch (FileNotFoundException e) {
+		}
+		String v = prop.getProperty("POINT_1ST");
+		Core.PT_1ST = v == null ? 4 : Integer.parseInt(v, 10);
+		v = prop.getProperty("POINT_FINALS");
+		Core.PT_FINALS = v == null ? 10 : Integer.parseInt(v, 10);
+		v = prop.getProperty("POINT_WIN");
+		Core.PT_WIN = v == null ? 10 : Integer.parseInt(v, 10);
+
 		int pt_x = 10;
 		int pt_y = 10;
 		int size_x = 1280;
