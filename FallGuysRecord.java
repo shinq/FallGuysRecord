@@ -319,7 +319,7 @@ class RankingMaker {
 	}
 
 	public String getDesc() {
-		return "Final進出者のみ。進出に付き10pt。優勝で更に+20pt。";
+		return "Final進出者のみ表示。決勝進出時、優勝時にポイント加算。";
 	}
 
 	// 集計対象外のマッチであるかを判定する。参加マッチ数計測のためのもの。
@@ -331,7 +331,7 @@ class RankingMaker {
 	// stat.participationCount / winCount / totalScore を設定する。
 	// それぞれをどのような数値にするかは Maker 次第とする。
 	// fixed round ごとに呼ばれる。対象外マッチ/ラウンドならなにもしないように実装する。
-	// default は参加マッチ数 / 優勝数 / final で10 & win で30
+	// default は優勝数/参加マッチ数。final 進出、優勝でポイント加算。
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
@@ -395,7 +395,7 @@ class RankingMaker {
 	}
 }
 
-//レース１位 4pt 決勝進出10pt 優勝30pt
+//レース１位時、決勝進出時、優勝時にポイント加算。
 class FeedFirstRankingMaker extends RankingMaker {
 	@Override
 	public String toString() {
@@ -411,10 +411,10 @@ class FeedFirstRankingMaker extends RankingMaker {
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount = stat.matches.size();
 		if (r.isFinal) {
-			stat.totalScore += 10;
+			stat.totalScore += Core.PT_FINALS;
 			if (p.qualified == Boolean.TRUE) {
 				stat.winCount += 1;
-				stat.totalScore += 20;
+				stat.totalScore += Core.PT_WIN;
 			}
 			return;
 		}
@@ -436,7 +436,7 @@ class SquadsRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return "squads として優勝していれば優勝としてカウント。決勝進出10pt。優勝30pt で計算。";
+		return "squads として優勝していれば優勝としてカウント。決勝進出時、優勝時にポイント加算。";
 	}
 
 	@Override
