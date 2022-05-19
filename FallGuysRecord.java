@@ -1512,7 +1512,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					buf.append(Core.pad(p.squadId)).append(" ");
 				buf.append(Core.pad(p.score)).append("pt(").append(Core.pad(p.finalScore)).append(")")
 						.append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
-				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p.name.startsWith("_") ? "B" : "")
+				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p.name.startsWith("_") ? "Bot" : "")
 						.append(p.name);
 				appendToRoundDetail(new String(buf), Core.playerStyles.get(p.name));
 			}
