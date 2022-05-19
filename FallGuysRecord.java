@@ -19,6 +19,7 @@ import java.io.ObjectOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.nio.charset.Charset;
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -1066,12 +1067,16 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	static int FONT_SIZE_RANK;
 	static int FONT_SIZE_DETAIL;
 
+	static ServerSocketMutex mutex = new ServerSocketMutex(29878);
 	static FallGuysRecord frame;
 	static FGReader reader;
 	static String monospacedFontFamily = "MS Gothic";
 	static String fontFamily = "Meiryo UI";
 
 	public static void main(String[] args) throws Exception {
+		if (!mutex.tryLock()) {
+			System.exit(0);
+		}
 		//	UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
 		//	UIManager.setLookAndFeel("com.sun.java.swing.plaf.motif.MotifLookAndFeel");
 		UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
@@ -1290,6 +1295,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		Style def = doc.getStyle(StyleContext.DEFAULT_STYLE);
 		Style s = doc.addStyle("bold", def);
 		StyleConstants.setBold(s, true);
+		s = doc.addStyle("underscore", def);
+		StyleConstants.setUnderline(s, true);
 		s = doc.addStyle("green", def);
 		StyleConstants.setForeground(s, new Color(0x00cc00));
 		//StyleConstants.setBold(s, true);
@@ -1342,6 +1349,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.add(playerMarkingSel);
 		playerMarkingSel.addItem("");
 		playerMarkingSel.addItem("bold");
+		playerMarkingSel.addItem("underscore");
 		playerMarkingSel.addItem("green");
 		playerMarkingSel.addItem("blue");
 		playerMarkingSel.addItem("cyan");
@@ -1633,4 +1641,64 @@ class NoWrapJTextPane extends JTextPane {
 		// Avoid substituting the minimum width for the preferred width when the viewport is too narrow
 		return getUI().getPreferredSize(this);
 	};
+}
+
+class ServerSocketMutex {
+	int port;
+	ServerSocket ss;
+	int count = 0;
+
+	public ServerSocketMutex() {
+		this(65123);
+	}
+
+	public ServerSocketMutex(int port) {
+		this.port = port;
+	}
+
+	public synchronized boolean hasLock() {
+		return ss != null;
+	}
+
+	public synchronized boolean tryLock() {
+		if (ss != null) {
+			count++;
+			return true;
+		}
+		try {
+			ss = new ServerSocket(port);
+			return true;
+		} catch (IOException e) {
+		}
+		return false;
+	}
+
+	/**
+	 * ロックを獲得できるまでブロックします。
+	 */
+	public synchronized void lock() {
+		while (true) {
+			if (tryLock())
+				return;
+			try {
+				wait(100);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	public synchronized void unlock() {
+		if (ss == null)
+			return;
+		if (count > 0) {
+			count--;
+			return;
+		}
+		try {
+			ss.close();
+		} catch (IOException e) {
+		}
+		ss = null;
+	}
 }
