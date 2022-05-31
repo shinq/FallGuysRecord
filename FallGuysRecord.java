@@ -103,11 +103,8 @@ class Player {
 	int score; // ラウンド中のスコアあるいは順位スコア
 	int finalScore; // ラウンド終了後に出力されたスコア
 
-	Player(String name, int id, int squadId, int partyId) {
-		this.name = name;
+	Player(int id) {
 		this.id = id;
-		this.squadId = squadId;
-		this.partyId = partyId;
 	}
 
 	public String toString() {
@@ -153,11 +150,11 @@ class Round {
 		this.match = match;
 	}
 
-	public void add(String name, int id, int squadId, int partyId) {
+	public void add(Player p) {
 		synchronized (Core.listLock) {
-			Player p = new Player(name, id, squadId, partyId);
 			byId.put(p.id, p);
-			byName.put(p.name, p);
+			if (p.name != null)
+				byName.put(p.name, p);
 		}
 	}
 
@@ -846,8 +843,8 @@ class FGReader extends TailerListenerAdapter {
 
 	static Pattern patternPlayerSpawn = Pattern.compile(
 			"\\[CameraDirector\\] Adding Spectator target (.+) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
-	static Pattern patternPlayerSpawn2 = Pattern.compile(
-			"\\[StateGameLoading\\] OnPlayerSpawned - name=FallGuy \\[(\\d+)\\] .+ \\([^)]+\\) ID=(\\d+) was spawned");
+	static Pattern patternPlayerObjectId = Pattern.compile(
+			"\\[ClientGameManager\\] Handling bootstrap for [^ ]+ player FallGuy \\[(\\d+)\\].+, playerID = (\\d+)");
 
 	static Pattern patternScoreUpdated = Pattern.compile("Player (\\d+) score = (\\d+)");
 	static Pattern patternPlayerResult = Pattern.compile(
@@ -921,6 +918,20 @@ class FGReader extends TailerListenerAdapter {
 			}
 			break;
 		case MEMBER_DETECTING: // join detection
+			// 本来 playerId, name が先に検出されるべきだが、playerId, objectId が先に出力されうるためどちらが先でも対応できるようにする。
+			m = patternPlayerObjectId.matcher(line);
+			if (m.find()) {
+				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
+				int playerId = Integer.parseUnsignedInt(m.group(2));
+				Player p = Core.getCurrentRound().byId.get(playerId);
+				if (p == null) {
+					p = new Player(playerId);
+					Core.getCurrentRound().add(p);
+				}
+				p.objectId = playerObjectId;
+				// System.out.println("playerId=" + playerId + " objectId=" + playerObjectId);
+				break;
+			}
 			m = patternPlayerSpawn.matcher(line);
 			if (m.find()) {
 				String name = m.group(1);
@@ -928,19 +939,18 @@ class FGReader extends TailerListenerAdapter {
 				int squadId = Integer.parseUnsignedInt(m.group(3));
 				int playerId = Integer.parseUnsignedInt(m.group(4));
 				String playerName = name.substring(4, name.length() - 6);
-				Core.getCurrentRound().add(playerName, playerId, squadId, partyId);
+
+				Player p = Core.getCurrentRound().byId.get(playerId);
+				if (p == null) {
+					p = new Player(playerId);
+				}
+				p.partyId = partyId;
+				p.squadId = squadId;
+				p.name = playerName;
+				Core.getCurrentRound().add(p);
+
 				System.out.println(Core.getCurrentRound().byId.size() + " Player " + playerName + " (id=" + playerId
 						+ " squadId=" + squadId + ") spwaned.");
-				break;
-			}
-			m = patternPlayerSpawn2.matcher(line);
-			if (m.find()) {
-				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
-				int playerId = Integer.parseUnsignedInt(m.group(2));
-				Player p = Core.getCurrentRound().byId.get(playerId);
-				if (p != null)
-					p.objectId = playerObjectId;
-				// System.out.println("playerId=" + playerId + " objectId=" + playerObjectId);
 				break;
 			}
 			if (line.contains("[StateGameLoading] Starting the game.")) {
@@ -1024,7 +1034,8 @@ class FGReader extends TailerListenerAdapter {
 				System.out.println(
 						"Result for " + playerId + " score=" + finalScore + " isFinal=" + isFinal + " " + player);
 				if (player != null) {
-					player.finalScore = finalScore;
+					if (player.squadId > 0)
+						player.finalScore = finalScore;
 				}
 				break;
 			}
@@ -1073,6 +1084,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	static String monospacedFontFamily = "MS Gothic";
 	static String fontFamily = "Meiryo UI";
 
+	@SuppressWarnings("unchecked")
 	public static void main(String[] args) throws Exception {
 		if (!mutex.tryLock()) {
 			System.exit(0);
@@ -1172,6 +1184,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.NORTH, rankingFilterSel, LINE1_Y, SpringLayout.NORTH, p);
 		rankingFilterSel.setSize(44, 20);
 		rankingFilterSel.addItem(1);
+		rankingFilterSel.addItem(2);
 		rankingFilterSel.addItem(3);
 		rankingFilterSel.addItem(10);
 		rankingFilterSel.addItem(20);
@@ -1212,7 +1225,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 20));
 		l.putConstraint(SpringLayout.WEST, myStatLabel, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, myStatLabel, -10, SpringLayout.SOUTH, p);
-		myStatLabel.setPreferredSize(new Dimension(300, 20));
+		myStatLabel.setPreferredSize(new Dimension(340, 20));
 		p.add(myStatLabel);
 
 		pingLabel = new JLabel("");
