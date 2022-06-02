@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -58,6 +59,9 @@ import javax.swing.text.StyledDocument;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.input.Tailer;
 import org.apache.commons.io.input.TailerListenerAdapter;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 //集計後のプレイヤーごと
 class PlayerStat {
@@ -656,6 +660,7 @@ class Core {
 	public static final List<Round> rounds = new ArrayList<Round>();
 	public static final Map<String, PlayerStat> stats = new HashMap<String, PlayerStat>();
 	public static Map<String, String> playerStyles = new HashMap<String, String>();
+	public static Map<String, Map<String, String>> servers = new HashMap<String, Map<String, String>>();
 
 	public static void load() {
 	}
@@ -873,7 +878,6 @@ class FGReader extends TailerListenerAdapter {
 			Core.addMatch(new Match(showName, id));
 			System.out.println("DETECT SHOW STARTING");
 			readState = ReadState.ROUND_DETECTING;
-			listener.showUpdated();
 
 			String ip = m.group(1);
 			if (!ip.equals(Core.serverIp)) {
@@ -888,11 +892,25 @@ class FGReader extends TailerListenerAdapter {
 						boolean res = address.isReachable(3000);
 						Core.pingMS = System.currentTimeMillis() - now;
 						System.out.println("PING " + res + " " + Core.pingMS);
+						Map<String, String> server = Core.servers.get(ip);
+						if (server == null) {
+							ObjectMapper mapper = new ObjectMapper();
+							JsonNode root = mapper.readTree(new URL("http://ip-api.com/json/" + ip));
+							server = new HashMap<String, String>();
+							server.put("country", root.get("country").asText());
+							server.put("regionName", root.get("regionName").asText());
+							server.put("city", root.get("city").asText());
+							server.put("timezone", root.get("timezone").asText());
+							Core.servers.put(ip, server);
+						}
+						System.err.println(
+								ip + " " + Core.pingMS + " " + server.get("timezone") + " " + server.get("city"));
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
 				}
 			}
+			listener.showUpdated();
 		}
 		switch (readState) {
 		case SHOW_DETECTING: // start show or round detection
@@ -1117,6 +1135,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		try (ObjectInputStream in = new ObjectInputStream(new FileInputStream("state.dat"))) {
 			winRect = (Rectangle) in.readObject();
 			Core.playerStyles = (Map<String, String>) in.readObject();
+			Core.servers = (Map<String, Map<String, String>>) in.readObject();
 		} catch (IOException ex) {
 		}
 
@@ -1230,9 +1249,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		pingLabel = new JLabel("");
 		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, 16));
-		l.putConstraint(SpringLayout.WEST, pingLabel, COL4_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.WEST, pingLabel, 40, SpringLayout.EAST, myStatLabel);
 		l.putConstraint(SpringLayout.SOUTH, pingLabel, -10, SpringLayout.SOUTH, p);
-		pingLabel.setPreferredSize(new Dimension(300, 20));
+		pingLabel.setPreferredSize(new Dimension(700, 20));
 		p.add(pingLabel);
 
 		JScrollPane scroller;
@@ -1410,6 +1429,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream("state.dat"))) {
 					out.writeObject(frame.getBounds());
 					out.writeObject(Core.playerStyles);
+					out.writeObject(Core.servers);
 				} catch (IOException ex) {
 					ex.printStackTrace();
 				}
@@ -1424,8 +1444,15 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	void updateMatches() {
+		// server info
+		String text = "PING: " + Core.pingMS + "ms " + Core.serverIp;
+		Map<String, String> server = Core.servers.get(Core.serverIp);
+		if (server != null)
+			text += " " + server.get("country") + " " + server.get("regionName") + " " + server.get("city") + " "
+					+ server.get("timezone");
+		pingLabel.setText(text);
+
 		int prevSelectedIndex = matchSel.getSelectedIndex();
-		pingLabel.setText("PING: " + Core.pingMS + "ms(" + Core.serverIp + ")");
 		DefaultListModel<String> model = (DefaultListModel<String>) matchSel.getModel();
 		model.clear();
 		model.addElement("ALL");
