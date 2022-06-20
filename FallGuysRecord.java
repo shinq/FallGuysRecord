@@ -66,14 +66,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 //集計後のプレイヤーごと
 class PlayerStat {
 	String name; // for user identication
+	String platform;
 	Set<Match> matches = new HashSet<Match>(); // 参加match。
 	int totalScore;
 	int participationCount; // rate 分母。round または match 数。RankingMaker による。
 	int winCount; // rate 分子。優勝やクリアなど。RankingMaker による。
 	Map<String, String> additional = new HashMap<String, String>(); // 独自の統計を使う場合用領域
 
-	public PlayerStat(String name) {
+	public PlayerStat(String name, String platform) {
 		this.name = name;
+		this.platform = platform;
 	}
 
 	public double getRate() {
@@ -90,13 +92,14 @@ class PlayerStat {
 	}
 
 	public String toString() {
-		return name;
+		return name + "(" + platform + ")";
 	}
 }
 
 //各ラウンドのプレイヤー戦績
 class Player {
 	String name; // for user identication
+	String platform;
 	int id; // id of current round (diferrent for each rounds)
 	int objectId; // object id of current round (for score log)
 	int squadId;
@@ -112,7 +115,7 @@ class Player {
 	}
 
 	public String toString() {
-		return name;
+		return name + "(" + platform + ")";
 	}
 }
 
@@ -227,13 +230,15 @@ class Match {
 	boolean fixed; // 完了まで読み込み済み
 	String name;
 	long id; // 過去に読み込んだステージであるかの判定用。仮。start 値で良いかも。
+	String ip;
 	Date start;
 	Date end;
 	List<Round> rounds = new ArrayList<Round>();
 
-	public Match(String name, long id) {
+	public Match(String name, long id, String ip) {
 		this.name = name;
 		this.id = id;
+		this.ip = ip;
 	}
 }
 
@@ -317,10 +322,21 @@ class RoundDef {
 		roundNames.put("FallGuy_Tunnel_Final", new RoundDef("Roll Off", "ロールオフ", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_Arena_01", new RoundDef("Royal Fumble", "ロイヤルファンブル", RoundType.HUNT));
 		roundNames.put("FallGuy_ThinIce", new RoundDef("Thin Ice", "パキパキアイス", RoundType.SURVIVAL));
+
+		roundNames.put("FallGuy_Gauntlet_09", new RoundDef("TRACK ATTACK", "トラックアタック", RoundType.RACE));
+		roundNames.put("FallGuy_ShortCircuit2", new RoundDef("SPEED CIRCUIT", "スピードサーキット", RoundType.RACE));
+		roundNames.put("FallGuy_SpinRing", new RoundDef("THE SWIVELLER", "リングスピナー", RoundType.SURVIVAL));
+		roundNames.put("FallGuy_HoopsRevenge", new RoundDef("BOUNCE PARTY", "バウンスパーティー", RoundType.HUNT));
+		roundNames.put("FallGuy_1v1_Volleyfall", new RoundDef("VOLLEYFALL", "バレーフォール", RoundType.HUNT));
+		roundNames.put("FallGuy_HexARing", new RoundDef("HEX-A-RING", "リングのノロイ", RoundType.SURVIVAL));
+		roundNames.put("FallGuy_BlastBall_ArenaSurvival", new RoundDef("BLAST BALL", "ブラストボール", RoundType.SURVIVAL));
 	}
 
 	public static RoundDef get(String name) {
-		return roundNames.get(name);
+		RoundDef def = roundNames.get(name);
+		if (def == null)
+			return new RoundDef(name, name, RoundType.RACE); // unknown stage
+		return def;
 	}
 }
 
@@ -399,7 +415,7 @@ class RankingMaker {
 				buf.append("(").append(Core.pad(stat.winCount)).append("/").append(Core.pad(stat.participationCount))
 						.append(") ").append(String.format("%6.2f", stat.getRate()))
 						.append("% ").append(String.format("%3d", stat.totalScore)).append("pt");
-				buf.append(" ").append(stat.name).append("\n");
+				buf.append(" ").append(stat).append("\n");
 			}
 		}
 		buf.append("total: ").append(internalNo).append("\n");
@@ -571,7 +587,7 @@ class CandyRankingMaker extends RankingMaker {
 				if (prev == null || comp.compare(stat, prev) != 0) {
 					dispNo = internalNo;
 				}
-				buf.append(Core.pad(dispNo)).append(" ").append(stat.name).append("\n");
+				buf.append(Core.pad(dispNo)).append(" ").append(stat).append("\n");
 				prev = stat;
 
 				buf.append("  total: ").append(Core.pad(stat.winCount)).append("/")
@@ -717,7 +733,7 @@ class Core {
 				for (Player p : r.byName.values()) {
 					PlayerStat stat = stats.get(p.name);
 					if (stat == null) {
-						stat = new PlayerStat(p.name);
+						stat = new PlayerStat(p.name, p.platform);
 						stats.put(stat.name, stat);
 					}
 					stat.matches.add(r.match);
@@ -875,11 +891,11 @@ class FGReader extends TailerListenerAdapter {
 		if (m.find()) {
 			String showName = "_";
 			long id = (int) (Math.random() * 65536); // FIXME
-			Core.addMatch(new Match(showName, id));
+			String ip = m.group(1);
+			Core.addMatch(new Match(showName, id, ip));
 			System.out.println("DETECT SHOW STARTING");
 			readState = ReadState.ROUND_DETECTING;
 
-			String ip = m.group(1);
 			if (!ip.equals(Core.serverIp)) {
 				System.out.println("new server detected: " + ip);
 				long now = System.currentTimeMillis();
@@ -957,6 +973,7 @@ class FGReader extends TailerListenerAdapter {
 				int squadId = Integer.parseUnsignedInt(m.group(3));
 				int playerId = Integer.parseUnsignedInt(m.group(4));
 				String playerName = name.substring(4, name.length() - 6);
+				String platform = name.substring(0, 3);
 
 				Player p = Core.getCurrentRound().byId.get(playerId);
 				if (p == null) {
@@ -965,6 +982,7 @@ class FGReader extends TailerListenerAdapter {
 				p.partyId = partyId;
 				p.squadId = squadId;
 				p.name = playerName;
+				p.platform = platform;
 				Core.getCurrentRound().add(p);
 
 				System.out.println(Core.getCurrentRound().byId.size() + " Player " + playerName + " (id=" + playerId
@@ -1205,6 +1223,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingFilterSel.addItem(1);
 		rankingFilterSel.addItem(2);
 		rankingFilterSel.addItem(3);
+		rankingFilterSel.addItem(5);
 		rankingFilterSel.addItem(10);
 		rankingFilterSel.addItem(20);
 		rankingFilterSel.addItem(25);
@@ -1244,14 +1263,14 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 20));
 		l.putConstraint(SpringLayout.WEST, myStatLabel, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, myStatLabel, -10, SpringLayout.SOUTH, p);
-		myStatLabel.setPreferredSize(new Dimension(340, 20));
+		myStatLabel.setPreferredSize(new Dimension(320, 20));
 		p.add(myStatLabel);
 
 		pingLabel = new JLabel("");
 		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, 16));
 		l.putConstraint(SpringLayout.WEST, pingLabel, 40, SpringLayout.EAST, myStatLabel);
 		l.putConstraint(SpringLayout.SOUTH, pingLabel, -10, SpringLayout.SOUTH, p);
-		pingLabel.setPreferredSize(new Dimension(700, 20));
+		pingLabel.setPreferredSize(new Dimension(900, 20));
 		p.add(pingLabel);
 
 		JScrollPane scroller;
@@ -1434,6 +1453,20 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					ex.printStackTrace();
 				}
 				Core.save();
+				// log connected servers statistics
+				Map<String, Integer> connected = new HashMap<String, Integer>();
+				for (Match m : Core.matches) {
+					Map<String, String> server = Core.servers.get(m.ip);
+					if (server == null)
+						continue;
+					Integer count = connected.get(server.get("city"));
+					if (count == null)
+						count = 0;
+					connected.put(server.get("city"), count + 1);
+				}
+				for (String city : connected.keySet()) {
+					System.err.println(city + "\t" + connected.get(city));
+				}
 			}
 		});
 
@@ -1547,7 +1580,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 						appendToRoundDetail((Core.myName.equals(p.name) ? "★" : p.partyId != 0 ? "p " : "　")
 								+ " " + (p.qualified == null ? "　" : p.qualified ? "○" : "✕") + Core.pad(p.score)
 								+ "pt("
-								+ Core.pad(p.finalScore) + ")" + " " + p.name, Core.playerStyles.get(p.name));
+								+ Core.pad(p.finalScore) + ")" + " " + p, Core.playerStyles.get(p.name));
 				}
 				appendToRoundDetail("********** solo rank **********", null);
 			}
@@ -1561,7 +1594,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				buf.append(Core.pad(p.score)).append("pt(").append(Core.pad(p.finalScore)).append(")")
 						.append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
 				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p.name.startsWith("_") ? "Bot" : "")
-						.append(p.name);
+						.append(p);
 				appendToRoundDetail(new String(buf), Core.playerStyles.get(p.name));
 			}
 		}
@@ -1614,6 +1647,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			Match m = getSelectedMatch();
 			if (m == null)
 				return Core.rounds.get(roundIndex);
+			if (m.rounds.size() <= roundIndex)
+				return null;
 			return m.rounds.get(roundIndex);
 		}
 	}
