@@ -251,11 +251,17 @@ class RoundDef {
 	public final String dispName;
 	public final String dispNameJa;
 	public final RoundType type;
+	public final boolean isFinal;
 
 	public RoundDef(String name, String nameJa, RoundType type) {
+		this(name, nameJa, type, false);
+	}
+
+	public RoundDef(String name, String nameJa, RoundType type, boolean isFinal) {
 		dispName = name;
 		dispNameJa = nameJa;
 		this.type = type;
+		this.isFinal = isFinal;
 	}
 
 	static Map<String, RoundDef> roundNames = new HashMap<String, RoundDef>();
@@ -315,21 +321,25 @@ class RoundDef {
 		roundNames.put("FallGuy_Snowy_Scrap", new RoundDef("Snowy Scrap", "スノースクラップ", RoundType.TEAM));
 		roundNames.put("FallGuy_Invisibeans", new RoundDef("Sweet Thieves", "キャンディードロボー", RoundType.TEAM));
 		roundNames.put("FallGuy_ConveyorArena_01", new RoundDef("Team Tail Tag", "チームしっぽオニ", RoundType.TEAM));
-		roundNames.put("FallGuy_FallMountain_Hub_Complete", new RoundDef("Fall Mountain", "フォールマウンテン", RoundType.RACE));
-		roundNames.put("FallGuy_FloorFall", new RoundDef("Hex-A-Gone", "とまるなキケン", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_JumpShowdown_01", new RoundDef("Jump Showdown", "ジャンプ・ショーダウン", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_Crown_Maze_Topdown", new RoundDef("Lost Temple", "ロストテンプル", RoundType.RACE));
-		roundNames.put("FallGuy_Tunnel_Final", new RoundDef("Roll Off", "ロールオフ", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_Arena_01", new RoundDef("Royal Fumble", "ロイヤルファンブル", RoundType.HUNT));
-		roundNames.put("FallGuy_ThinIce", new RoundDef("Thin Ice", "パキパキアイス", RoundType.SURVIVAL));
+
+		roundNames.put("FallGuy_FallMountain_Hub_Complete",
+				new RoundDef("Fall Mountain", "フォールマウンテン", RoundType.RACE, true));
+		roundNames.put("FallGuy_FloorFall", new RoundDef("Hex-A-Gone", "とまるなキケン", RoundType.SURVIVAL, true));
+		roundNames.put("FallGuy_JumpShowdown_01",
+				new RoundDef("Jump Showdown", "ジャンプ・ショーダウン", RoundType.SURVIVAL, true));
+		roundNames.put("FallGuy_Crown_Maze_Topdown", new RoundDef("Lost Temple", "ロストテンプル", RoundType.RACE, true));
+		roundNames.put("FallGuy_Tunnel_Final", new RoundDef("Roll Off", "ロールオフ", RoundType.SURVIVAL, true));
+		roundNames.put("FallGuy_Arena_01", new RoundDef("Royal Fumble", "ロイヤルファンブル", RoundType.HUNT, true));
+		roundNames.put("FallGuy_ThinIce", new RoundDef("Thin Ice", "パキパキアイス", RoundType.SURVIVAL, true));
 
 		roundNames.put("FallGuy_Gauntlet_09", new RoundDef("TRACK ATTACK", "トラックアタック", RoundType.RACE));
 		roundNames.put("FallGuy_ShortCircuit2", new RoundDef("SPEED CIRCUIT", "スピードサーキット", RoundType.RACE));
 		roundNames.put("FallGuy_SpinRing", new RoundDef("THE SWIVELLER", "リングスピナー", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_HoopsRevenge", new RoundDef("BOUNCE PARTY", "バウンスパーティー", RoundType.HUNT));
 		roundNames.put("FallGuy_1v1_Volleyfall", new RoundDef("VOLLEYFALL", "バレーフォール", RoundType.HUNT));
-		roundNames.put("FallGuy_HexARing", new RoundDef("HEX-A-RING", "リングのノロイ", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_BlastBall_ArenaSurvival", new RoundDef("BLAST BALL", "ブラストボール", RoundType.SURVIVAL));
+		roundNames.put("FallGuy_HexARing", new RoundDef("HEX-A-RING", "リングのノロイ", RoundType.SURVIVAL, true));
+		roundNames.put("FallGuy_BlastBall_ArenaSurvival",
+				new RoundDef("BLAST BALL", "ブラストボール", RoundType.SURVIVAL, true));
 	}
 
 	public static RoundDef get(String name) {
@@ -946,7 +956,9 @@ class FGReader extends TailerListenerAdapter {
 			if (m.find()) {
 				String roundName = m.group(1);
 				long frame = Long.parseUnsignedLong(m.group(2)); // FIXME: round id のほうが適切
-				Core.addRound(new Round(roundName, frame, isFinal, Core.getCurrentMatch()));
+				RoundDef def = RoundDef.get(roundName);
+				Core.addRound(
+						new Round(roundName, frame, isFinal || (def != null && def.isFinal), Core.getCurrentMatch()));
 				System.out.println("DETECT STARTING " + roundName + " frame=" + frame);
 				readState = ReadState.MEMBER_DETECTING;
 			}
@@ -1071,8 +1083,9 @@ class FGReader extends TailerListenerAdapter {
 				System.out.println(
 						"Result for " + playerId + " score=" + finalScore + " isFinal=" + isFinal + " " + player);
 				if (player != null) {
-					if (player.squadId > 0)
+					if (player.squadId > 0) { // 最後の squad 情報がバグで毎回出力されている
 						player.finalScore = finalScore;
+					}
 				}
 				break;
 			}
@@ -1594,8 +1607,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					buf.append(Core.pad(p.squadId)).append(" ");
 				buf.append(Core.pad(p.score)).append("pt(").append(Core.pad(p.finalScore)).append(")")
 						.append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
-				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p.name.startsWith("_") ? "Bot" : "")
-						.append(p);
+				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p);
 				appendToRoundDetail(new String(buf), Core.playerStyles.get(p.name));
 			}
 		}
