@@ -972,8 +972,9 @@ class FGReader extends TailerListenerAdapter {
 				int partyId = m.group(2).length() == 0 ? 0 : Integer.parseUnsignedInt(m.group(2)); // 空文字列のことあり
 				int squadId = Integer.parseUnsignedInt(m.group(3));
 				int playerId = Integer.parseUnsignedInt(m.group(4));
-				String playerName = name.substring(4, name.length() - 6);
-				String platform = name.substring(0, 3);
+				int sep = name.indexOf("_");
+				String playerName = name.substring(sep + 1).replaceFirst(" \\(.+\\)$", "");
+				String platform = name.substring(0, sep);
 
 				Player p = Core.getCurrentRound().byId.get(playerId);
 				if (p == null) {
