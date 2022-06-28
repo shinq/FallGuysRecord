@@ -142,8 +142,9 @@ class Squad {
 class Round {
 	Match match;
 	boolean fixed; // ステージ完了まで読み込み済み
-	boolean isFinal;
+	private boolean isFinal;
 	String name;
+	String roundName2; // より詳細な内部名
 	long id; // 過去に読み込んだステージであるかの判定用。厳密ではないが frame 数なら衝突確率は低い。start 値で良いかも。
 	Date start;
 	Date end;
@@ -223,6 +224,29 @@ class Round {
 				s.members.add(p);
 		return s;
 	}
+
+	public boolean isFinal() {
+		if (isFinal)
+			return true;
+		// isFinal だけでは決勝判定が不十分…
+		// 非ファイナルラウンドがファイナルとして出現した場合の検査
+		if ("round_jinxed_squads".equals(roundName2))
+			return true;
+		if ("round_territory_control_s4_show_squads".equals(roundName2))
+			return true;
+		if ("round_fall_ball_squads".equals(roundName2))
+			return true;
+		if ("round_basketfall_squads".equals(roundName2))
+			return true;
+		if ("round_1v1_volleyfall_final_squads".equals(roundName2))
+			return true;
+
+		// FIXME: ファイナル向けラウンドが非ファイナルで出現した場合の検査が必要
+		RoundDef def = RoundDef.get(name);
+		if (def != null && def.isFinalNormally) // 通常ファイナルでしかでないステージならファイナルとみなす。
+			return true;
+		return false;
+	}
 }
 
 // 一つのショー
@@ -251,7 +275,7 @@ class RoundDef {
 	public final String dispName;
 	public final String dispNameJa;
 	public final RoundType type;
-	public final boolean isFinal;
+	public final boolean isFinalNormally; // 通常はファイナルとして出現
 
 	public RoundDef(String name, String nameJa, RoundType type) {
 		this(name, nameJa, type, false);
@@ -261,7 +285,7 @@ class RoundDef {
 		dispName = name;
 		dispNameJa = nameJa;
 		this.type = type;
-		this.isFinal = isFinal;
+		this.isFinalNormally = isFinal;
 	}
 
 	static Map<String, RoundDef> roundNames = new HashMap<String, RoundDef>();
@@ -269,7 +293,7 @@ class RoundDef {
 		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", RoundType.HUNT));
 		roundNames.put("FallGuy_BiggestFan", new RoundDef("Big Fans", "ビッグファン", RoundType.RACE));
 		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", RoundType.HUNT));
-		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.TEAM));
+		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.HUNT));
 		roundNames.put("FallGuy_DoorDash", new RoundDef("Door Dash", "ドアダッシュ", RoundType.RACE));
 		roundNames.put("FallGuy_Gauntlet_02_01", new RoundDef("Dizzy Heights", "スピンレース", RoundType.RACE));
 		roundNames.put("FallGuy_IceClimb_01", new RoundDef("Freezy Peak", "スノーマウンテン", RoundType.RACE));
@@ -372,7 +396,7 @@ class RankingMaker {
 	// default は優勝数/参加マッチ数。final 進出、優勝でポイント加算。
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount = stat.matches.size();
-		if (r.isFinal) {
+		if (r.isFinal()) {
 			stat.totalScore += Core.PT_FINALS;
 			if (p.qualified == Boolean.TRUE) {
 				stat.winCount += 1;
@@ -448,7 +472,7 @@ class FeedFirstRankingMaker extends RankingMaker {
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount = stat.matches.size();
-		if (r.isFinal) {
+		if (r.isFinal()) {
 			stat.totalScore += Core.PT_FINALS;
 			if (p.qualified == Boolean.TRUE) {
 				stat.winCount += 1;
@@ -486,7 +510,7 @@ class SquadsRankingMaker extends RankingMaker {
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.participationCount = stat.matches.size();
-		if (r.isFinal) {
+		if (r.isFinal()) {
 			stat.totalScore += Core.PT_FINALS;
 			// メンバーの誰かに優勝者がいれば優勝とみなす。
 			for (Player member : r.getSquad(p.squadId).members) {
@@ -637,7 +661,7 @@ class SnipeRankingMaker extends RankingMaker {
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		stat.totalScore = stat.participationCount = stat.matches.size();
-		if (r.isFinal && p.qualified == Boolean.TRUE) {
+		if (r.isFinal() && p.qualified == Boolean.TRUE) {
 			stat.winCount += 1;
 		}
 	}
@@ -867,10 +891,11 @@ class FGReader extends TailerListenerAdapter {
 	static Pattern patternShowName = Pattern.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
 	//	static Pattern patternShow = Pattern
 	//			.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
-	static Pattern patternMatchStart = Pattern.compile("\\[StateMatchmaking\\] Begin matchmaking ([^\\s]+)");
-	static Pattern patternMatchStart2 = Pattern.compile("\\[StateMatchmaking\\] Begin party communications");
-	static Pattern patternStartGame = Pattern.compile(
+	//static Pattern patternMatchStart = Pattern.compile("\\[StateMatchmaking\\] Begin ");
+	static Pattern patternRoundName = Pattern.compile(
 			"\\[StateGameLoading\\] Loading game level scene ([^\\s]+) - frame (\\d+)");
+	static Pattern patternLoadedRound = Pattern
+			.compile("\\[StateGameLoading\\] Finished loading game level, assumed to be ([^.]+)\\.");
 
 	static Pattern patternPlayerSpawn = Pattern.compile(
 			"\\[CameraDirector\\] Adding Spectator target (.+) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
@@ -952,14 +977,19 @@ class FGReader extends TailerListenerAdapter {
 				isFinal = line.contains("isFinalRound=True");
 				break;
 			}
-			m = patternStartGame.matcher(line);
+			m = patternRoundName.matcher(line);
 			if (m.find()) {
 				String roundName = m.group(1);
 				long frame = Long.parseUnsignedLong(m.group(2)); // FIXME: round id のほうが適切
-				RoundDef def = RoundDef.get(roundName);
-				Core.addRound(
-						new Round(roundName, frame, isFinal || (def != null && def.isFinal), Core.getCurrentMatch()));
+				Core.addRound(new Round(roundName, frame, isFinal, Core.getCurrentMatch()));
 				System.out.println("DETECT STARTING " + roundName + " frame=" + frame);
+				//readState = ReadState.MEMBER_DETECTING;
+			}
+			m = patternLoadedRound.matcher(line);
+			if (m.find()) {
+				String roundName2 = m.group(1);
+				Core.getCurrentRound().roundName2 = roundName2;
+				System.out.println("DETECT STARTING " + roundName2);
 				readState = ReadState.MEMBER_DETECTING;
 			}
 			break;
@@ -1481,6 +1511,12 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				for (String city : connected.keySet()) {
 					System.err.println(city + "\t" + connected.get(city));
 				}
+				for (Match m : Core.matches) {
+					System.err.println("****** " + m.name);
+					for (Round r : m.rounds) {
+						System.err.println(r.name + "\t" + r.roundName2);
+					}
+				}
 			}
 		});
 
@@ -1570,7 +1606,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		if (r == null) {
 			return;
 		}
-		if (r.isFinal) {
+		if (r.isFinal()) {
 			appendToRoundDetail("********** FINAL **********", "bold");
 		}
 		synchronized (Core.listLock) {
