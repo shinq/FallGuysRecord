@@ -230,18 +230,23 @@ class Round {
 			return true;
 		// isFinal だけでは決勝判定が不十分…
 		// 非ファイナルラウンドがファイナルとして出現した場合の検査
-		if ("round_jinxed_squads".equals(roundName2))
+		if (roundName2.startsWith("round_jinxed_squads"))
+			return true;
+		if (roundName2.startsWith("round_territory_control_squads"))
+			return true;
+		if (roundName2.startsWith("round_fall_ball_squads"))
+			return true;
+		if (roundName2.startsWith("round_basketfall_squads"))
 			return true;
 		if ("round_territory_control_s4_show_squads".equals(roundName2))
-			return true;
-		if ("round_fall_ball_squads".equals(roundName2))
-			return true;
-		if ("round_basketfall_squads".equals(roundName2))
 			return true;
 		if ("round_1v1_volleyfall_final_squads".equals(roundName2))
 			return true;
 
 		// FIXME: ファイナル向けラウンドが非ファイナルで出現した場合の検査が必要
+		if ("round_thin_ice_pelican".equals(roundName2))
+			return false;
+
 		RoundDef def = RoundDef.get(name);
 		if (def != null && def.isFinalNormally) // 通常ファイナルでしかでないステージならファイナルとみなす。
 			return true;
