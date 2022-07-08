@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -108,7 +110,7 @@ class Player {
 
 	Boolean qualified;
 	int score; // ラウンド中のスコアあるいは順位スコア
-	int finalScore; // ラウンド終了後に出力されたスコア
+	int finalScore = -1; // ラウンド終了後に出力されたスコア
 
 	Player(int id) {
 		this.id = id;
@@ -130,7 +132,7 @@ class Squad {
 	public int getScore() {
 		int score = 0;
 		for (Player p : members) {
-			if (p.finalScore > 0)
+			if (p.finalScore >= 0)
 				score += p.finalScore;
 			else
 				score += p.score;
@@ -156,6 +158,10 @@ class Round {
 		this.id = id;
 		this.isFinal = isFinal;
 		this.match = match;
+	}
+
+	public RoundDef getDef() {
+		return RoundDef.get(name);
 	}
 
 	public void add(Player p) {
@@ -229,24 +235,33 @@ class Round {
 		if (isFinal)
 			return true;
 		// isFinal だけでは決勝判定が不十分…
-		// 非ファイナルラウンドがファイナルとして出現した場合の検査
-		if (roundName2.startsWith("round_jinxed_squads"))
-			return true;
-		if (roundName2.startsWith("round_territory_control_squads"))
-			return true;
-		if (roundName2.startsWith("round_fall_ball_squads"))
-			return true;
-		if (roundName2.startsWith("round_basketfall_squads"))
-			return true;
-		if ("round_territory_control_s4_show_squads".equals(roundName2))
-			return true;
-		if ("round_1v1_volleyfall_final_squads".equals(roundName2))
-			return true;
+		if (roundName2 != null) {
+			// 非ファイナルラウンドがファイナルとして出現した場合の検査
+			if (roundName2.endsWith("_final"))
+				return true;
+			if (roundName2.startsWith("round_jinxed_squads"))
+				return true;
+			if (roundName2.startsWith("round_territory_control_squads"))
+				return true;
+			if (roundName2.startsWith("round_fall_ball_squads"))
+				return true;
+			if (roundName2.startsWith("round_basketfall_squads"))
+				return true;
+			if ("round_territory_control_s4_show_squads".equals(roundName2))
+				return true;
+			if ("round_1v1_volleyfall_final_squads".equals(roundName2))
+				return true;
+			if ("round_sports_suddendeath_fall_ball_02".equals(roundName2)) // GG
+				return true;
 
-		// FIXME: ファイナル向けラウンドが非ファイナルで出現した場合の検査が必要
-		if ("round_thin_ice_pelican".equals(roundName2))
-			return false;
-
+			// FIXME: ファイナル向けラウンドが非ファイナルで出現した場合の検査が必要
+			if ("round_thin_ice_pelican".equals(roundName2))
+				return false;
+			if (roundName2.matches("round_floor_fall_.*_0[12]$")) // hex trial
+				return false;
+			if (roundName2.matches("round_thin_ice_.*_0[12]$")) // thin ice trial
+				return false;
+		}
 		RoundDef def = RoundDef.get(name);
 		if (def != null && def.isFinalNormally) // 通常ファイナルでしかでないステージならファイナルとみなす。
 			return true;
@@ -272,7 +287,7 @@ class Match {
 }
 
 enum RoundType {
-	RACE, HUNT, SURVIVAL, LOGIC, TEAM
+	RACE, HUNT, SURVIVAL, TEAM
 };
 
 class RoundDef {
@@ -295,61 +310,63 @@ class RoundDef {
 
 	static Map<String, RoundDef> roundNames = new HashMap<String, RoundDef>();
 	static {
-		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", RoundType.HUNT));
-		roundNames.put("FallGuy_BiggestFan", new RoundDef("Big Fans", "ビッグファン", RoundType.RACE));
-		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", RoundType.HUNT));
-		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.HUNT));
 		roundNames.put("FallGuy_DoorDash", new RoundDef("Door Dash", "ドアダッシュ", RoundType.RACE));
+		roundNames.put("FallGuy_Gauntlet_03", new RoundDef("Whirlygig", "グルグルファイト", RoundType.RACE));
 		roundNames.put("FallGuy_Gauntlet_02_01", new RoundDef("Dizzy Heights", "スピンレース", RoundType.RACE));
-		roundNames.put("FallGuy_IceClimb_01", new RoundDef("Freezy Peak", "スノーマウンテン", RoundType.RACE));
-		roundNames.put("FallGuy_DodgeFall", new RoundDef("Fruit Chute", "フルーツパニック", RoundType.RACE));
-		roundNames.put("FallGuy_SeeSaw360", new RoundDef("Full Tilt", "フルティルト", RoundType.RACE));
 		roundNames.put("FallGuy_ChompChomp_01", new RoundDef("Gate Crash", "ゲートクラッシュ", RoundType.RACE));
 		roundNames.put("FallGuy_Gauntlet_01", new RoundDef("Hit Parade", "ヒットパレード", RoundType.RACE));
-		roundNames.put("FallGuy_Hoops_Blockade", new RoundDef("Hoopsie Legends", "フープループレジェンド", RoundType.HUNT));
-		roundNames.put("FallGuy_Gauntlet_04", new RoundDef("Knight Fever", "ナイト・フィーバー", RoundType.RACE));
-		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動くスポットライト", RoundType.HUNT));
-		roundNames.put("FallGuy_DrumTop", new RoundDef("Lily Leapers", "リリー・リーパー", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_08", new RoundDef("Party Promenade", "パーティープロムナード", RoundType.RACE));
-		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", RoundType.HUNT));
-		roundNames.put("FallGuy_PipedUp", new RoundDef("Pipe Dream", "パイプドリーム", RoundType.RACE));
-		roundNames.put("FallGuy_Tunnel_Race_01", new RoundDef("Roll On", "ロールオン", RoundType.RACE));
 		roundNames.put("FallGuy_SeeSaw_variant2", new RoundDef("See Saw", "シーソーゲーム", RoundType.RACE));
-		roundNames.put("FallGuy_ShortCircuit", new RoundDef("Short Circuit", "ショート・サーキット", RoundType.RACE));
-		roundNames.put("FallGuy_SkeeFall", new RoundDef("Ski Fall", "スキーフォール", RoundType.HUNT));
-		roundNames.put("FallGuy_Gauntlet_06", new RoundDef("Skyline Stumble", "スカイラインスタンブル", RoundType.RACE));
 		roundNames.put("FallGuy_Lava_02", new RoundDef("Slime Climb", "スライムクライム", RoundType.RACE));
-		roundNames.put("FallGuy_SlimeClimb_2", new RoundDef("Slimescraper", "スライムスクレイパー", RoundType.RACE));
+		roundNames.put("FallGuy_DodgeFall", new RoundDef("Fruit Chute", "フルーツパニック", RoundType.RACE));
 		roundNames.put("FallGuy_TipToe", new RoundDef("Tip Toe", "ヒヤヒヤロード", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_07", new RoundDef("Treetop Tumble", "ツリートップタンブル", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_05", new RoundDef("Tundra Run", "ツンドラダッシュ", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_03", new RoundDef("Whirlygig", "グルグルファイト", RoundType.RACE));
+		roundNames.put("FallGuy_Gauntlet_04", new RoundDef("Knight Fever", "ナイト・フィーバー", RoundType.RACE));
 		roundNames.put("FallGuy_WallGuys", new RoundDef("Wall Guys", "ウォールガイズ", RoundType.RACE));
-		roundNames.put("FallGuy_FruitPunch", new RoundDef("Big Shots", "ビッグショット", RoundType.SURVIVAL));
+		roundNames.put("FallGuy_BiggestFan", new RoundDef("Big Fans", "ビッグファン", RoundType.RACE));
+		roundNames.put("FallGuy_IceClimb_01", new RoundDef("Freezy Peak", "スノーマウンテン", RoundType.RACE));
+		roundNames.put("FallGuy_Tunnel_Race_01", new RoundDef("Roll On", "ロールオン", RoundType.RACE));
+		roundNames.put("FallGuy_Gauntlet_06", new RoundDef("Skyline Stumble", "スカイラインスタンブル", RoundType.RACE));
+		roundNames.put("FallGuy_ShortCircuit", new RoundDef("Short Circuit", "ショート・サーキット", RoundType.RACE));
+		roundNames.put("FallGuy_HoverboardSurvival", new RoundDef("Hoverboard Heroes", "ホバーボード・ヒーローズ", RoundType.RACE));
+		roundNames.put("FallGuy_SlimeClimb_2", new RoundDef("Slimescraper", "スライムスクレイパー", RoundType.RACE));
+		roundNames.put("FallGuy_Gauntlet_07", new RoundDef("Treetop Tumble", "ツリートップタンブル", RoundType.RACE));
+		roundNames.put("FallGuy_DrumTop", new RoundDef("Lily Leapers", "リリー・リーパー", RoundType.RACE));
+		roundNames.put("FallGuy_SeeSaw360", new RoundDef("Full Tilt", "フルティルト", RoundType.RACE));
+		roundNames.put("FallGuy_Gauntlet_08", new RoundDef("Party Promenade", "パーティープロムナード", RoundType.RACE));
+		roundNames.put("FallGuy_PipedUp", new RoundDef("Pipe Dream", "パイプドリーム", RoundType.RACE));
+		roundNames.put("FallGuy_Gauntlet_05", new RoundDef("Tundra Run", "ツンドラダッシュ", RoundType.RACE));
+
+		roundNames.put("FallGuy_TailTag_2", new RoundDef("Tail Tag", "しっぽオニ", RoundType.HUNT));
+		roundNames.put("FallGuy_Hoops_Blockade", new RoundDef("Hoopsie Legends", "フープループレジェンド", RoundType.HUNT));
+		roundNames.put("FallGuy_SkeeFall", new RoundDef("Ski Fall", "スキーフォール", RoundType.HUNT));
+		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.HUNT));
+		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", RoundType.HUNT));
+		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", RoundType.HUNT));
+		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", RoundType.HUNT));
+		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動くスポットライト", RoundType.HUNT));
+
 		roundNames.put("FallGuy_Block_Party", new RoundDef("Block Party", "ブロックパーティー", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_HoverboardSurvival",
-				new RoundDef("Hoverboard Heroes", "ホバーボード・ヒーローズ", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_JumpClub_01", new RoundDef("Jump Club", "ジャンプクラブ", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_MatchFall", new RoundDef("Perfect Match", "パーフェクトマッチ", RoundType.LOGIC));
+		roundNames.put("FallGuy_MatchFall", new RoundDef("Perfect Match", "パーフェクトマッチ", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_Tunnel_01", new RoundDef("Roll Out", "ロールアウト", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_SnowballSurvival", new RoundDef("Snowball Survival", "雪玉サバイバル", RoundType.SURVIVAL));
+		roundNames.put("FallGuy_FruitPunch", new RoundDef("Big Shots", "ビッグショット", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_RobotRampage_Arena2",
 				new RoundDef("Stompin' Ground", "ストンピングラウンド", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_FruitBowl", new RoundDef("Sum Fruit", "カウントフルーツ", RoundType.LOGIC));
-		roundNames.put("FallGuy_TailTag_2", new RoundDef("Tail Tag", "しっぽオニ", RoundType.HUNT));
-		roundNames.put("FallGuy_Basketfall_01", new RoundDef("Basketfall", "バスケットフォール", RoundType.TEAM));
-		roundNames.put("FallGuy_EggGrab", new RoundDef("Egg Scramble", "エッグ・スクランブル", RoundType.TEAM));
-		roundNames.put("FallGuy_EggGrab_02", new RoundDef("Egg Siege", "エッグ・キャッスル", RoundType.TEAM));
+		roundNames.put("FallGuy_FruitBowl", new RoundDef("Sum Fruit", "カウントフルーツ", RoundType.SURVIVAL));
+
+		roundNames.put("FallGuy_ConveyorArena_01", new RoundDef("Team Tail Tag", "チームしっぽオニ", RoundType.TEAM));
+		roundNames.put("FallGuy_TeamInfected", new RoundDef("Jinxed", "バッドラック", RoundType.TEAM));
 		roundNames.put("FallGuy_FallBall_5", new RoundDef("Fall Ball", "フォールボール", RoundType.TEAM));
 		roundNames.put("FallGuy_BallHogs_01", new RoundDef("Hoarders", "ためこみ合戦", RoundType.TEAM));
-		roundNames.put("FallGuy_Hoops_01", new RoundDef("Hoopsie Daisy", "フープ・ループ・ゴール", RoundType.TEAM));
-		roundNames.put("FallGuy_TeamInfected", new RoundDef("Jinxed", "バッドラック", RoundType.TEAM));
-		roundNames.put("FallGuy_ChickenChase_01", new RoundDef("Pegwin Pursuit", "ペンギンチェイス", RoundType.TEAM));
-		roundNames.put("FallGuy_TerritoryControl_v2", new RoundDef("Power Trip", "パワートリップ", RoundType.TEAM));
 		roundNames.put("FallGuy_RocknRoll", new RoundDef("Rock'N'Roll", "ロックンロール", RoundType.TEAM));
+		roundNames.put("FallGuy_Hoops_01", new RoundDef("Hoopsie Daisy", "フープ・ループ・ゴール", RoundType.TEAM));
+		roundNames.put("FallGuy_EggGrab", new RoundDef("Egg Scramble", "エッグ・スクランブル", RoundType.TEAM));
+		roundNames.put("FallGuy_EggGrab_02", new RoundDef("Egg Siege", "エッグ・キャッスル", RoundType.TEAM));
 		roundNames.put("FallGuy_Snowy_Scrap", new RoundDef("Snowy Scrap", "スノースクラップ", RoundType.TEAM));
+		roundNames.put("FallGuy_ChickenChase_01", new RoundDef("Pegwin Pursuit", "ペンギンチェイス", RoundType.TEAM));
+		roundNames.put("FallGuy_Basketfall_01", new RoundDef("Basketfall", "バスケットフォール", RoundType.TEAM));
+		roundNames.put("FallGuy_TerritoryControl_v2", new RoundDef("Power Trip", "パワートリップ", RoundType.TEAM));
 		roundNames.put("FallGuy_Invisibeans", new RoundDef("Sweet Thieves", "キャンディードロボー", RoundType.TEAM));
-		roundNames.put("FallGuy_ConveyorArena_01", new RoundDef("Team Tail Tag", "チームしっぽオニ", RoundType.TEAM));
 
 		roundNames.put("FallGuy_FallMountain_Hub_Complete",
 				new RoundDef("Fall Mountain", "フォールマウンテン", RoundType.RACE, true));
@@ -876,6 +893,8 @@ class FGReader extends TailerListenerAdapter {
 	boolean isFinal = false;
 	long prevNetworkCheckedTime = System.currentTimeMillis();
 
+	Timer survivalScoreTimer;
+
 	@Override
 	public void handle(String line) {
 		try {
@@ -1035,14 +1054,31 @@ class FGReader extends TailerListenerAdapter {
 
 				System.out.println(Core.getCurrentRound().byId.size() + " Player " + playerName + " (id=" + playerId
 						+ " squadId=" + squadId + ") spwaned.");
+				listener.roundUpdated();
 				break;
 			}
 			if (line.contains("[StateGameLoading] Starting the game.")) {
-				System.out.println("DETECT STARTING GAME");
+				listener.roundStarted();
+			}
+			if (line.contains("[GameSession] Changing state from Countdown to Playing")) {
 				Core.getCurrentRound().start = getTime(line);
 				listener.roundStarted();
 				qualifiedCount = eliminatedCount = 0; // reset
 				readState = ReadState.RESULT_DETECTING;
+				if (Core.getCurrentRound().getDef().type == RoundType.SURVIVAL) {
+					survivalScoreTimer = new Timer();
+					survivalScoreTimer.scheduleAtFixedRate(new TimerTask() {
+						@Override
+						public void run() {
+							for (Player p : Core.getCurrentRound().byId.values()) {
+								if (p.qualified == Boolean.FALSE)
+									continue;
+								p.score += 1;
+							}
+							listener.roundUpdated();
+						}
+					}, 1000, 1000);
+				}
 				break;
 			}
 			if (line.contains("[StateMainMenu] Creating or joining lobby")
@@ -1088,7 +1124,6 @@ class FGReader extends TailerListenerAdapter {
 							case HUNT:
 								player.score = r.byId.size() - qualifiedCount;
 								break;
-							case LOGIC:
 							case SURVIVAL:
 							case TEAM:
 								player.score = 1;
@@ -1127,12 +1162,20 @@ class FGReader extends TailerListenerAdapter {
 			// round end
 			//if (text.contains("[ClientGameManager] Server notifying that the round is over.")
 			if (line.contains(
+					"[GameSession] Changing state from Playing to GameOver")) {
+				Core.getCurrentRound().end = getTime(line);
+				if (survivalScoreTimer != null) {
+					survivalScoreTimer.cancel();
+					survivalScoreTimer.purge();
+					survivalScoreTimer = null;
+				}
+			}
+			if (line.contains(
 					"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateQualificationScreen")
 					|| line.contains(
 							"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen")) {
 				System.out.println("DETECT END GAME");
 				Core.getCurrentRound().fixed = true;
-				Core.getCurrentRound().end = getTime(line);
 				Core.updateStats();
 				listener.roundDone();
 				readState = ReadState.ROUND_DETECTING;
@@ -1150,6 +1193,11 @@ class FGReader extends TailerListenerAdapter {
 					|| line.contains("[StateMatchmaking] Begin matchmaking")
 					|| line.contains("Changing local player state to: SpectatingEliminated")
 					|| line.contains("[GlobalGameStateClient] SwitchToDisconnectingState")) {
+				if (survivalScoreTimer != null) {
+					survivalScoreTimer.cancel();
+					survivalScoreTimer.purge();
+					survivalScoreTimer = null;
+				}
 				readState = ReadState.SHOW_DETECTING;
 				break;
 			}
@@ -1309,10 +1357,10 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		// under
 		myStatLabel = new JLabel("");
-		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 20));
+		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 18));
 		l.putConstraint(SpringLayout.WEST, myStatLabel, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, myStatLabel, -10, SpringLayout.SOUTH, p);
-		myStatLabel.setPreferredSize(new Dimension(320, 20));
+		myStatLabel.setPreferredSize(new Dimension(330, 28));
 		p.add(myStatLabel);
 
 		pingLabel = new JLabel("");
@@ -1632,10 +1680,10 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 							null);
 
 					for (Player p : s.members)
-						appendToRoundDetail((Core.myName.equals(p.name) ? "★" : p.partyId != 0 ? "p " : "　")
-								+ " " + (p.qualified == null ? "　" : p.qualified ? "○" : "✕") + Core.pad(p.score)
-								+ "pt("
-								+ Core.pad(p.finalScore) + ")" + " " + p, Core.playerStyles.get(p.name));
+						appendToRoundDetail((Core.myName.equals(p.name) ? "★" : p.partyId != 0 ? "p " : "　") + " "
+								+ (p.qualified == null ? "　" : p.qualified ? "○" : "✕") + Core.pad(p.score)
+								+ "pt(" + (p.finalScore < 0 ? "  " : Core.pad(p.finalScore)) + ")" + " " + p,
+								Core.playerStyles.get(p.name));
 				}
 				appendToRoundDetail("********** solo rank **********", null);
 			}
@@ -1646,8 +1694,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				buf.append(Core.pad(p.ranking)).append(" ");
 				if (squads != null)
 					buf.append(Core.pad(p.squadId)).append(" ");
-				buf.append(Core.pad(p.score)).append("pt(").append(Core.pad(p.finalScore)).append(")")
-						.append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
+				buf.append(Core.pad(p.score)).append("pt(").append(p.finalScore < 0 ? "  " : Core.pad(p.finalScore))
+						.append(")").append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
 				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p);
 				appendToRoundDetail(new String(buf), Core.playerStyles.get(p.name));
 			}
