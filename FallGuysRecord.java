@@ -237,8 +237,9 @@ class Round {
 		// isFinal だけでは決勝判定が不十分…
 		if (roundName2 != null) {
 			// 非ファイナルラウンドがファイナルとして出現した場合の検査
-			if (roundName2.endsWith("_final"))
+			if (roundName2.contains("_final"))
 				return true;
+			/*
 			if (roundName2.startsWith("round_jinxed_squads"))
 				return true;
 			if (roundName2.startsWith("round_territory_control_squads"))
@@ -251,6 +252,7 @@ class Round {
 				return true;
 			if ("round_1v1_volleyfall_final_squads".equals(roundName2))
 				return true;
+			*/
 			if ("round_sports_suddendeath_fall_ball_02".equals(roundName2)) // GG
 				return true;
 
@@ -260,6 +262,10 @@ class Round {
 			if (roundName2.matches("round_floor_fall_.*_0[12]$")) // hex trial
 				return false;
 			if (roundName2.matches("round_thin_ice_.*_0[12]$")) // thin ice trial
+				return false;
+			if (roundName2.matches("round_hexaring_.*_0[12]$")) // hexaring trial
+				return false;
+			if (roundName2.matches("round_blastball_.*_0[12]$")) // blastball trial
 				return false;
 		}
 		RoundDef def = RoundDef.get(name);
