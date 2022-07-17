@@ -94,7 +94,7 @@ class PlayerStat {
 	}
 
 	public String toString() {
-		return name + "(" + platform + ")";
+		return name;//  + "(" + platform + ")"
 	}
 }
 
