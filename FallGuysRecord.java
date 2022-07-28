@@ -237,22 +237,24 @@ class Round {
 		// isFinal だけでは決勝判定が不十分…
 		if (roundName2 != null) {
 			// 非ファイナルラウンドがファイナルとして出現した場合の検査
+			if (roundName2.contains("_non_final"))
+				return false;
 			if (roundName2.contains("_final"))
 				return true;
-			/*
-			if (roundName2.startsWith("round_jinxed_squads"))
-				return true;
-			if (roundName2.startsWith("round_territory_control_squads"))
-				return true;
-			if (roundName2.startsWith("round_fall_ball_squads"))
-				return true;
-			if (roundName2.startsWith("round_basketfall_squads"))
-				return true;
-			if ("round_territory_control_s4_show_squads".equals(roundName2))
-				return true;
-			if ("round_1v1_volleyfall_final_squads".equals(roundName2))
-				return true;
-			*/
+			/* squads final detection
+			if (byId.size() < 9) {
+				if (roundName2.startsWith("round_jinxed_squads"))
+					return true;
+				if (roundName2.startsWith("round_territory_control_squads"))
+					return true;
+				if (roundName2.startsWith("round_fall_ball_squads"))
+					return true;
+				if (roundName2.startsWith("round_basketfall_squads"))
+					return true;
+				if ("round_territory_control_s4_show_squads".equals(roundName2))
+					return true;
+			}
+			//*/
 			if ("round_sports_suddendeath_fall_ball_02".equals(roundName2)) // GG
 				return true;
 
@@ -392,6 +394,14 @@ class RoundDef {
 		roundNames.put("FallGuy_HexARing", new RoundDef("HEX-A-RING", "リングのノロイ", RoundType.SURVIVAL, true));
 		roundNames.put("FallGuy_BlastBall_ArenaSurvival",
 				new RoundDef("BLAST BALL", "ブラストボール", RoundType.SURVIVAL, true));
+
+		roundNames.put("FallGuy_SatelliteHoppers",
+				new RoundDef("SATELLITE HOPPERS", "SATELLITE HOPPERS", RoundType.RACE));
+		roundNames.put("FallGuy_Gauntlet_10", new RoundDef("TRACK ATTACK", "トラックアタック", RoundType.RACE));
+		roundNames.put("FallGuy_Starlink", new RoundDef("STAR LINK", "トラックアタック", RoundType.RACE));
+		roundNames.put("FallGuy_Hoverboard_Survival_2",
+				new RoundDef("HOVERBOARD SURVIVAL", "トラックアタック", RoundType.RACE));
+		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PERFECT", "トラックアタック", RoundType.HUNT));
 	}
 
 	public static RoundDef get(String name) {
@@ -787,8 +797,8 @@ class Core {
 		synchronized (listLock) {
 			stats.clear();
 			for (Round r : rounds) {
-				if (!r.fixed)
-					continue;
+				//				if (!r.fixed)
+				//					continue;
 				if (!rankingMaker.isEnable(r))
 					continue;
 				// このラウンドの参加者の結果を反映
