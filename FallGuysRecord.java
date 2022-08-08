@@ -241,6 +241,8 @@ class Round {
 				return false;
 			if (roundName2.contains("_final"))
 				return true;
+			if (byId.size() > 8 && roundName2.contains("_survival"))
+				return false;
 			/* squads final detection
 			if (byId.size() < 9) {
 				if (roundName2.startsWith("round_jinxed_squads"))
