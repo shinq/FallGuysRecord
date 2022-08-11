@@ -404,6 +404,8 @@ class RoundDef {
 		roundNames.put("FallGuy_Hoverboard_Survival_2",
 				new RoundDef("HOVERBOARD SURVIVAL", "トラックアタック", RoundType.RACE));
 		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PERFECT", "トラックアタック", RoundType.HUNT));
+
+		roundNames.put("FallGuy_BlueJay_UNPACKED", new RoundDef("BEAN HILL ZONE", "ジェリービーンズヒルゾーン", RoundType.HUNT));
 	}
 
 	public static RoundDef get(String name) {
