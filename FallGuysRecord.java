@@ -243,7 +243,9 @@ class Round {
 				return true;
 			if (byId.size() > 8 && roundName2.contains("_survival"))
 				return false;
-			/* squads final detection
+			if (roundName2.contains("round_thin_ice_blast_ball_banger"))
+				return false;
+			//* squads final detection
 			if (byId.size() < 9) {
 				if (roundName2.startsWith("round_jinxed_squads"))
 					return true;
@@ -397,15 +399,17 @@ class RoundDef {
 		roundNames.put("FallGuy_BlastBall_ArenaSurvival",
 				new RoundDef("BLAST BALL", "ブラストボール", RoundType.SURVIVAL, true));
 
-		roundNames.put("FallGuy_SatelliteHoppers",
-				new RoundDef("SATELLITE HOPPERS", "SATELLITE HOPPERS", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_10", new RoundDef("TRACK ATTACK", "トラックアタック", RoundType.RACE));
-		roundNames.put("FallGuy_Starlink", new RoundDef("STAR LINK", "トラックアタック", RoundType.RACE));
-		roundNames.put("FallGuy_Hoverboard_Survival_2",
-				new RoundDef("HOVERBOARD SURVIVAL", "トラックアタック", RoundType.RACE));
-		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PERFECT", "トラックアタック", RoundType.HUNT));
-
 		roundNames.put("FallGuy_BlueJay_UNPACKED", new RoundDef("BEAN HILL ZONE", "ジェリービーンズヒルゾーン", RoundType.HUNT));
+
+		roundNames.put("FallGuy_SatelliteHoppers", new RoundDef("COSMIC HIGHWAY", "コズミックハイウェイ", RoundType.RACE));
+		roundNames.put("FallGuy_Gauntlet_10", new RoundDef("SPACE RACE", "スペースレース", RoundType.RACE));
+		roundNames.put("FallGuy_Starlink", new RoundDef("STARCHART", "星空マップ", RoundType.RACE));
+		roundNames.put("FallGuy_Hoverboard_Survival_2",
+				new RoundDef("HOVERBOARD SURVIVAL", "ハイパードライブ・ヒーロー", RoundType.RACE));
+		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PERFECT", "ピクセルパーフェクト", RoundType.HUNT));
+		roundNames.put("FallGuy_Tip_Toe_Finale", new RoundDef("TIP TOE FINALE", "ヒヤヒヤロードファイナル", RoundType.RACE, true));
+		roundNames.put("FallGuy_HexSnake", new RoundDef("HEX SNAKE", "止まるなキケンスペース", RoundType.SURVIVAL, true));
+		// round_tiptoefinale
 	}
 
 	public static RoundDef get(String name) {
