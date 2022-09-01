@@ -32,9 +32,11 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.regex.Matcher;
@@ -150,6 +152,8 @@ class Round {
 	long id; // 過去に読み込んだステージであるかの判定用。厳密ではないが frame 数なら衝突確率は低い。start 値で良いかも。
 	Date start;
 	Date end;
+	Date topFinish;
+	Date myFinish;
 	Map<String, Player> byName = new HashMap<String, Player>();
 	Map<Integer, Player> byId = new HashMap<Integer, Player>();
 
@@ -286,6 +290,7 @@ class Match {
 	boolean fixed; // 完了まで読み込み済み
 	String name;
 	long id; // 過去に読み込んだステージであるかの判定用。仮。start 値で良いかも。
+	long pingMS;
 	String ip;
 	Date start;
 	Date end;
@@ -737,6 +742,10 @@ class Core {
 		return String.format("%2d", v);
 	}
 
+	public static String pad0(int v) {
+		return String.format("%02d", v);
+	}
+
 	/*
 	static String dump(byte[] bytes) {
 		StringBuilder b = new StringBuilder();
@@ -748,8 +757,7 @@ class Core {
 	*/
 
 	//////////////////////////////////////////////////////////////
-	public static long pingMS;
-	public static String serverIp;
+	public static String currentServerIp;
 	public static String myName;
 	public static RankingMaker rankingMaker = new RankingMaker();
 	public static final List<Match> matches = new ArrayList<Match>();
@@ -912,6 +920,8 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	ReadState readState = ReadState.SHOW_DETECTING;
+	int myObjectId = 0;
+	int topObjectId = 0;
 	int qualifiedCount = 0;
 	int eliminatedCount = 0;
 	boolean isFinal = false;
@@ -958,6 +968,9 @@ class FGReader extends TailerListenerAdapter {
 			"-playerId:(\\d+) points:(\\d+) isfinal:([^\\s]+) name:");
 
 	static DateFormat f = new SimpleDateFormat("HH:mm:ss.SSS");
+	static {
+		f.setTimeZone(TimeZone.getTimeZone("UTC"));
+	}
 
 	static Date getTime(String line) {
 		try {
@@ -973,24 +986,26 @@ class FGReader extends TailerListenerAdapter {
 		Matcher m = patternServer.matcher(line);
 		if (m.find()) {
 			String showName = "_";
-			long id = (int) (Math.random() * 65536); // FIXME
+			long id = getTime(line).getTime();
 			String ip = m.group(1);
-			Core.addMatch(new Match(showName, id, ip));
+			Match match = new Match(showName, id, ip);
+			Core.addMatch(match);
 			System.out.println("DETECT SHOW STARTING");
+			match.start = getTime(line);
 			readState = ReadState.ROUND_DETECTING;
 
-			if (!ip.equals(Core.serverIp)) {
+			if (!ip.equals(Core.currentServerIp)) {
 				System.out.println("new server detected: " + ip);
 				long now = System.currentTimeMillis();
-				if (Core.pingMS == 0 || prevNetworkCheckedTime + 60 * 1000 < now) {
-					Core.serverIp = ip;
+				if (match.pingMS == 0 || prevNetworkCheckedTime + 60 * 1000 < now) {
+					Core.currentServerIp = ip;
 					prevNetworkCheckedTime = now;
 					// ping check
 					try {
 						InetAddress address = InetAddress.getByName(ip);
 						boolean res = address.isReachable(3000);
-						Core.pingMS = System.currentTimeMillis() - now;
-						System.out.println("PING " + res + " " + Core.pingMS);
+						match.pingMS = System.currentTimeMillis() - now;
+						System.out.println("PING " + res + " " + match.pingMS);
 						Map<String, String> server = Core.servers.get(ip);
 						if (server == null) {
 							ObjectMapper mapper = new ObjectMapper();
@@ -1002,8 +1017,8 @@ class FGReader extends TailerListenerAdapter {
 							server.put("timezone", root.get("timezone").asText());
 							Core.servers.put(ip, server);
 						}
-						System.err.println(
-								ip + " " + Core.pingMS + " " + server.get("timezone") + " " + server.get("city"));
+						System.err.println(ip + " " + match.pingMS + " " + server.get("timezone") + " "
+								+ server.get("city"));
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
@@ -1079,6 +1094,9 @@ class FGReader extends TailerListenerAdapter {
 				System.out.println(Core.getCurrentRound().byId.size() + " Player " + playerName + " (id=" + playerId
 						+ " squadId=" + squadId + ") spwaned.");
 				listener.roundUpdated();
+				// 現在の自分の objectId 更新
+				if (Core.myName.equals(p.name))
+					myObjectId = p.objectId;
 				break;
 			}
 			if (line.contains("[StateGameLoading] Starting the game.")) {
@@ -1086,6 +1104,7 @@ class FGReader extends TailerListenerAdapter {
 			}
 			if (line.contains("[GameSession] Changing state from Countdown to Playing")) {
 				Core.getCurrentRound().start = getTime(line);
+				topObjectId = 0;
 				listener.roundStarted();
 				qualifiedCount = eliminatedCount = 0; // reset
 				readState = ReadState.RESULT_DETECTING;
@@ -1129,6 +1148,19 @@ class FGReader extends TailerListenerAdapter {
 				}
 				break;
 			}
+			// finish time handling
+			if (line.contains("[ClientGameManager] Handling unspawn for player FallGuy ")) {
+				Round r = Core.getCurrentRound();
+				if (topObjectId == 0) {
+					topObjectId = Integer
+							.parseInt(line.replaceFirst(".+Handling unspawn for player FallGuy \\[(\\d+)\\].*", "$1"));
+					r.topFinish = getTime(line);
+				}
+				if (line.contains("[ClientGameManager] Handling unspawn for player FallGuy [" + myObjectId + "] ")) {
+					r.myFinish = getTime(line);
+				}
+			}
+
 			// qualified / eliminated
 			m = patternPlayerResult.matcher(line);
 			if (m.find()) {
@@ -1158,6 +1190,10 @@ class FGReader extends TailerListenerAdapter {
 						player.ranking = qualifiedCount;
 						System.out.println("Qualified " + player + " rank=" + player.ranking + " " + player.score);
 					} else {
+						if (topObjectId == player.objectId) {
+							topObjectId = 0; // 切断でも Handling unspawn が出るのでこれを無視して先頭ゴールのみ検出するため
+							r.topFinish = null;
+						}
 						player.ranking = r.byId.size() - eliminatedCount;
 						eliminatedCount += 1;
 						System.out.println(player);
@@ -1200,6 +1236,7 @@ class FGReader extends TailerListenerAdapter {
 							"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen")) {
 				System.out.println("DETECT END GAME");
 				Core.getCurrentRound().fixed = true;
+				Core.getCurrentMatch().end = getTime(line);
 				Core.updateStats();
 				listener.roundDone();
 				readState = ReadState.ROUND_DETECTING;
@@ -1223,6 +1260,7 @@ class FGReader extends TailerListenerAdapter {
 					survivalScoreTimer = null;
 				}
 				readState = ReadState.SHOW_DETECTING;
+				Core.getCurrentMatch().end = getTime(line);
 				break;
 			}
 			break;
@@ -1604,14 +1642,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	void updateMatches() {
-		// server info
-		String text = "PING: " + Core.pingMS + "ms " + Core.serverIp;
-		Map<String, String> server = Core.servers.get(Core.serverIp);
-		if (server != null)
-			text += " " + server.get("country") + " " + server.get("regionName") + " " + server.get("city") + " "
-					+ server.get("timezone");
-		pingLabel.setText(text);
-
 		int prevSelectedIndex = matchSel.getSelectedIndex();
 		DefaultListModel<String> model = (DefaultListModel<String>) matchSel.getModel();
 		model.clear();
@@ -1623,6 +1653,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			matchSel.setSelectedIndex(prevSelectedIndex <= 0 ? 0 : model.getSize() - 1);
 			matchSel.ensureIndexIsVisible(matchSel.getSelectedIndex());
 		}
+		displayFooter();
 	}
 
 	void updateRounds() {
@@ -1651,6 +1682,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		}
 		roundsSel.setSelectedIndex(model.size() - 1);
 		roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
+		displayFooter();
 	}
 
 	private void appendToRanking(String str, String style) {
@@ -1682,6 +1714,16 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		roundDetailArea.setText("");
 		if (r == null) {
 			return;
+		}
+		if (r.topFinish != null) {
+			long t = r.topFinish.getTime() - r.start.getTime();
+			appendToRoundDetail("TOP: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
+					+ "." + (t % 1000), "bold");
+		}
+		if (r.myFinish != null) {
+			long t = r.myFinish.getTime() - r.start.getTime();
+			appendToRoundDetail("OWN: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
+					+ "." + (t % 1000), "bold");
 		}
 		if (r.isFinal()) {
 			appendToRoundDetail("********** FINAL **********", "bold");
@@ -1819,6 +1861,27 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		if (own != null)
 			myStatLabel
 					.setText("自分の戦績: " + own.winCount + " / " + own.participationCount + " (" + own.getRate() + "%)");
+	}
+
+	static final SimpleDateFormat f = new SimpleDateFormat("HH:mm:ss", Locale.JAPAN);
+
+	void displayFooter() {
+		String text = "";
+		Match m = getSelectedMatch();
+		if (m == null)
+			m = Core.getCurrentMatch();
+		if (m == null)
+			return;
+		if (m.start != null) {
+			text += "TIME:" + f.format(m.start) + (m.end == null ? "" : " - " + f.format(m.end));
+		}
+		// server info
+		text += " PING: " + m.pingMS + "ms " + m.ip;
+		Map<String, String> server = Core.servers.get(m.ip);
+		if (server != null)
+			text += " " + server.get("country") + " " + server.get("regionName") + " " + server.get("city") + " "
+					+ server.get("timezone");
+		pingLabel.setText(text);
 	}
 }
 
