@@ -1717,13 +1717,17 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		}
 		if (r.topFinish != null) {
 			long t = r.topFinish.getTime() - r.start.getTime();
+			if (t < 0)
+				t += 24 * 60 * 60 * 1000;
 			appendToRoundDetail("TOP: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
-					+ "." + (t % 1000), "bold");
+					+ "." + String.format("%03d", t % 1000), "bold");
 		}
 		if (r.myFinish != null) {
 			long t = r.myFinish.getTime() - r.start.getTime();
+			if (t < 0)
+				t += 24 * 60 * 60 * 1000;
 			appendToRoundDetail("OWN: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
-					+ "." + (t % 1000), "bold");
+					+ "." + String.format("%03d", t % 1000), "bold");
 		}
 		if (r.isFinal()) {
 			appendToRoundDetail("********** FINAL **********", "bold");
