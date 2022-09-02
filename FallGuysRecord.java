@@ -294,6 +294,7 @@ class Match {
 	String ip;
 	Date start;
 	Date end;
+	int winStreak;
 	List<Round> rounds = new ArrayList<Round>();
 
 	public Match(String name, long id, String ip) {
@@ -1189,6 +1190,15 @@ class FGReader extends TailerListenerAdapter {
 						qualifiedCount += 1;
 						player.ranking = qualifiedCount;
 						System.out.println("Qualified " + player + " rank=" + player.ranking + " " + player.score);
+
+						// 優勝なら match に勝利数書き込み(squads win 未対応)
+						if (Core.myName.equals(player.name) && r.isFinal()) {
+							Core.getCurrentMatch().winStreak = 1;
+							List<Match> matches = Core.matches;
+							if (matches.size() > 1)
+								Core.getCurrentMatch().winStreak += matches.get(matches.size() - 2).winStreak;
+						}
+
 					} else {
 						if (topObjectId == player.objectId) {
 							topObjectId = 0; // 切断でも Handling unspawn が出るのでこれを無視して先頭ゴールのみ検出するため
@@ -1878,6 +1888,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			return;
 		if (m.start != null) {
 			text += "TIME:" + f.format(m.start) + (m.end == null ? "" : " - " + f.format(m.end));
+		}
+		if (m.winStreak > 0) {
+			text += " WIN(" + m.winStreak + ")";
 		}
 		// server info
 		text += " PING: " + m.pingMS + "ms " + m.ip;
