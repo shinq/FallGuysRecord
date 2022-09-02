@@ -1737,7 +1737,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			if (t < 0)
 				t += 24 * 60 * 60 * 1000;
 			appendToRoundDetail("OWN: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
-					+ "." + String.format("%03d", t % 1000), "bold");
+					+ "." + String.format("%03d", t % 1000) + " #" + r.byName.get(Core.myName).ranking, "bold");
 		}
 		if (r.isFinal()) {
 			appendToRoundDetail("********** FINAL **********", "bold");
