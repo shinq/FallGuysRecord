@@ -360,7 +360,7 @@ class RoundDef {
 		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", RoundType.HUNT));
 		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", RoundType.HUNT));
 		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", RoundType.HUNT));
-		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動くスポットライト", RoundType.HUNT));
+		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT));
 
 		roundNames.put("FallGuy_Block_Party", new RoundDef("Block Party", "ブロックパーティー", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_JumpClub_01", new RoundDef("Jump Club", "ジャンプクラブ", RoundType.SURVIVAL));
@@ -411,10 +411,12 @@ class RoundDef {
 		roundNames.put("FallGuy_Gauntlet_10", new RoundDef("SPACE RACE", "スペースレース", RoundType.RACE));
 		roundNames.put("FallGuy_Starlink", new RoundDef("STARCHART", "星空マップ", RoundType.RACE));
 		roundNames.put("FallGuy_Hoverboard_Survival_2",
-				new RoundDef("HOVERBOARD SURVIVAL", "ハイパードライブ・ヒーロー", RoundType.RACE));
-		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PERFECT", "ピクセルパーフェクト", RoundType.HUNT));
+				new RoundDef("HYPERDRIE HIROES", "ハイパードライブ・ヒーロー", RoundType.RACE));
+		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PAINTERS", "ピクセル名人", RoundType.HUNT));
+		roundNames.put("FallGuy_FFA_Button_Bashers", new RoundDef("FRANTIC FACTORY", "ハチャメチャファクトリー", RoundType.HUNT));
+
 		roundNames.put("FallGuy_Tip_Toe_Finale", new RoundDef("TIP TOE FINALE", "ヒヤヒヤロードファイナル", RoundType.RACE, true));
-		roundNames.put("FallGuy_HexSnake", new RoundDef("HEX SNAKE", "止まるなキケンスペース", RoundType.SURVIVAL, true));
+		roundNames.put("FallGuy_HexSnake", new RoundDef("HEX-A-TERRESTRIAL", "止まるなキケンスペース", RoundType.SURVIVAL, true));
 		// round_tiptoefinale
 	}
 
