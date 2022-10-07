@@ -2,6 +2,7 @@ import java.awt.Color;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
@@ -102,6 +103,7 @@ class PlayerStat {
 
 //各ラウンドのプレイヤー戦績
 class Player {
+	Round round;
 	String name; // for user identication
 	String platform;
 	int id; // id of current round (diferrent for each rounds)
@@ -134,7 +136,7 @@ class Squad {
 	public int getScore() {
 		int score = 0;
 		for (Player p : members) {
-			if (p.finalScore >= 0)
+			if (p.finalScore >= 0 && !p.round.getDef().isHunt())
 				score += p.finalScore;
 			else
 				score += p.score;
@@ -146,7 +148,7 @@ class Squad {
 class Round {
 	Match match;
 	boolean fixed; // ステージ完了まで読み込み済み
-	private boolean isFinal;
+	boolean isFinal;
 	String name;
 	String roundName2; // より詳細な内部名
 	long id; // 過去に読み込んだステージであるかの判定用。厳密ではないが frame 数なら衝突確率は低い。start 値で良いかも。
@@ -169,6 +171,7 @@ class Round {
 	}
 
 	public void add(Player p) {
+		p.round = this;
 		synchronized (Core.listLock) {
 			byId.put(p.id, p);
 			if (p.name != null)
@@ -199,7 +202,7 @@ class Round {
 
 	public ArrayList<Player> byRank() {
 		ArrayList<Player> list = new ArrayList<Player>(byName.values());
-		Collections.sort(list, new Core.PlayerComparator());
+		Collections.sort(list, new Core.PlayerComparator(getDef().isHunt()));
 		return list;
 	}
 
@@ -217,7 +220,7 @@ class Round {
 		}
 		ArrayList<Squad> list = new ArrayList<Squad>(bySquadId.values());
 		for (Squad s : list)
-			Collections.sort(s.members, new Core.PlayerComparator());
+			Collections.sort(s.members, new Core.PlayerComparator(getDef().isHunt()));
 		Collections.sort(list, new Comparator<Squad>() {
 			@Override
 			public int compare(Squad s1, Squad s2) {
@@ -245,12 +248,14 @@ class Round {
 				return false;
 			if (roundName2.contains("_final"))
 				return true;
+			if (roundName2.contains("round_robotrampage_arena_2_ss2_show1_03"))
+				return true;
 			if (byId.size() > 8 && roundName2.contains("_survival"))
 				return false;
 			if (roundName2.contains("round_thin_ice_blast_ball_banger"))
 				return false;
 			//* squads final detection
-			if (byId.size() < 9) {
+			if (match.name.startsWith("squads_4") && byId.size() < 9) {
 				if (roundName2.startsWith("round_jinxed_squads"))
 					return true;
 				if (roundName2.startsWith("round_territory_control_squads"))
@@ -276,6 +281,8 @@ class Round {
 			if (roundName2.matches("round_hexaring_.*_0[12]$")) // hexaring trial
 				return false;
 			if (roundName2.matches("round_blastball_.*_0[12]$")) // blastball trial
+				return false;
+			if (roundName2.matches("round_.+_event_.+")) // walnut event
 				return false;
 		}
 		RoundDef def = RoundDef.get(name);
@@ -326,6 +333,10 @@ class RoundDef {
 		this.isFinalNormally = isFinal;
 	}
 
+	public boolean isHunt() {
+		return type == RoundType.HUNT;
+	}
+
 	static Map<String, RoundDef> roundNames = new HashMap<String, RoundDef>();
 	static {
 		roundNames.put("FallGuy_DoorDash", new RoundDef("Door Dash", "ドアダッシュ", RoundType.RACE));
@@ -353,14 +364,15 @@ class RoundDef {
 		roundNames.put("FallGuy_PipedUp", new RoundDef("Pipe Dream", "パイプドリーム", RoundType.RACE));
 		roundNames.put("FallGuy_Gauntlet_05", new RoundDef("Tundra Run", "ツンドラダッシュ", RoundType.RACE));
 
-		roundNames.put("FallGuy_TailTag_2", new RoundDef("Tail Tag", "しっぽオニ", RoundType.HUNT));
+		roundNames.put("FallGuy_TailTag_2", new RoundDef("Tail Tag", "しっぽオニ", RoundType.SURVIVAL));
+		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.HUNT));
 		roundNames.put("FallGuy_Hoops_Blockade", new RoundDef("Hoopsie Legends", "フープループレジェンド", RoundType.HUNT));
 		roundNames.put("FallGuy_SkeeFall", new RoundDef("Ski Fall", "スキーフォール", RoundType.HUNT));
-		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.HUNT));
 		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", RoundType.HUNT));
 		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", RoundType.HUNT));
 		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", RoundType.HUNT));
 		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT));
+		roundNames.put("FallGuy_FollowTheLeader_UNPACKED", new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT));
 
 		roundNames.put("FallGuy_Block_Party", new RoundDef("Block Party", "ブロックパーティー", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_JumpClub_01", new RoundDef("Jump Club", "ジャンプクラブ", RoundType.SURVIVAL));
@@ -780,6 +792,7 @@ class Core {
 			if (m.id == o.id)
 				return; // already added
 		synchronized (listLock) {
+			// 直前のマッチのラウンド０だったら除去
 			if (matches.size() > 1 && getCurrentMatch().rounds.size() == 0)
 				matches.remove(matches.size() - 1);
 			matches.add(m);
@@ -872,11 +885,20 @@ class Core {
 	}
 
 	static class PlayerComparator implements Comparator<Player> {
+		boolean isHunt;
+
+		PlayerComparator(boolean hunt) {
+			isHunt = hunt;
+		}
+
 		@Override
 		public int compare(Player p1, Player p2) {
-			int v = (int) Math.signum(p2.finalScore - p1.finalScore);
-			if (v != 0)
-				return v;
+			int v;
+			if (!isHunt) { // hunt 系の finalScore がバグっていて獲得スコアを出してきてしまう。これでは正確な順位付けができない。
+				v = (int) Math.signum(p2.finalScore - p1.finalScore);
+				if (v != 0)
+					return v;
+			}
 			v = (int) Math.signum(p2.score - p1.score);
 			if (v != 0)
 				return v;
@@ -980,9 +1002,9 @@ class FGReader extends TailerListenerAdapter {
 			Date date = f.parse(line.substring(0, 12));
 			return date;
 		} catch (ParseException e) {
-			e.printStackTrace();
+			//e.printStackTrace();
 		}
-		return null;
+		return new Date();
 	}
 
 	private void parseLine(String line) {
@@ -1117,9 +1139,8 @@ class FGReader extends TailerListenerAdapter {
 						@Override
 						public void run() {
 							for (Player p : Core.getCurrentRound().byId.values()) {
-								if (p.qualified == Boolean.FALSE)
-									continue;
-								p.score += 1;
+								if (p.qualified == null)
+									p.score += 1;
 							}
 							listener.roundUpdated();
 						}
@@ -1143,7 +1164,7 @@ class FGReader extends TailerListenerAdapter {
 				int score = Integer.parseUnsignedInt(m.group(2));
 				Player player = Core.getCurrentRound().getByObjectId(playerObjectId);
 				if (player != null) {
-					if (player.score != score) {
+					if (player.score != score && player.qualified == null) {
 						System.out.println(player + " score " + player.score + " -> " + score);
 						player.score = score;
 						listener.roundUpdated();
@@ -1176,18 +1197,18 @@ class FGReader extends TailerListenerAdapter {
 				if (player != null) {
 					player.qualified = succeeded;
 					if (succeeded) {
-						if (player.score == 0) {
-							// スコア出力がない場合の仮スコア付
-							switch (RoundDef.get(r.name).type) {
-							case RACE:
-							case HUNT:
-								player.score = r.byId.size() - qualifiedCount;
-								break;
-							case SURVIVAL:
-							case TEAM:
+						// スコア出力がない場合の仮スコア付
+						switch (RoundDef.get(r.name).type) {
+						case RACE:
+						case HUNT:
+							// HUNT が獲得スコアしか出力しなくなったため過剰スコアのプレイヤーがより上位順位となってしまうのを防ぐため順位スコア加算
+							player.score += r.byId.size() - qualifiedCount;
+							break;
+						case SURVIVAL:
+						case TEAM:
+							if (player.score == 0)
 								player.score = 1;
-								break;
-							}
+							break;
 						}
 						qualifiedCount += 1;
 						player.ranking = qualifiedCount;
@@ -1249,6 +1270,12 @@ class FGReader extends TailerListenerAdapter {
 				System.out.println("DETECT END GAME");
 				Core.getCurrentRound().fixed = true;
 				Core.getCurrentMatch().end = getTime(line);
+				// 優勝画面に行ったらそのラウンドをファイナル扱いとする
+				// final マークがつかないファイナルや、通常ステージで一人生き残り優勝のケースを補填するためだが
+				// 通常ステージでゲーム終了時それをファイナルステージとみなすべきかはスコアリング上微妙ではある。
+				if (line.contains(
+						"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen"))
+					Core.getCurrentRound().isFinal = true;
 				Core.updateStats();
 				listener.roundDone();
 				readState = ReadState.ROUND_DETECTING;
@@ -1282,6 +1309,7 @@ class FGReader extends TailerListenerAdapter {
 
 // UI
 public class FallGuysRecord extends JFrame implements FGReader.Listener {
+	static int FONT_SIZE_BASE;
 	static int FONT_SIZE_RANK;
 	static int FONT_SIZE_DETAIL;
 
@@ -1315,6 +1343,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		v = prop.getProperty("POINT_WIN");
 		Core.PT_WIN = v == null ? 10 : Integer.parseInt(v, 10);
 
+		v = prop.getProperty("FONT_SIZE_BASE");
+		FONT_SIZE_BASE = v == null ? 12 : Integer.parseInt(v, 10);
 		v = prop.getProperty("FONT_SIZE_RANK");
 		FONT_SIZE_RANK = v == null ? 16 : Integer.parseInt(v, 10);
 		v = prop.getProperty("FONT_SIZE_DETAIL");
@@ -1352,14 +1382,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	boolean ignoreSelEvent;
 
 	static final int LINE1_Y = 10;
-	static final int LINE2_Y = 40;
-	static final int LINE4_Y = 498;
-	static final int LINE5_Y = 530;
-	static final int LINE6_Y = 560;
 	static final int COL1_X = 10;
-	static final int COL2_X = 400;
-	static final int COL3_X = 530;
-	static final int COL4_X = 690;
 
 	FallGuysRecord() {
 		SpringLayout l = new SpringLayout();
@@ -1367,14 +1390,15 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.setLayout(l);
 
 		JLabel label = new JLabel("【総合ランキング】");
-		label.setFont(new Font(fontFamily, Font.BOLD, 14));
+		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(200, 20);
 		p.add(label);
+		JLabel totalRankingLabel = label;
 
 		rankingSortSel = new JComboBox<String>();
-		rankingSortSel.setFont(new Font(fontFamily, Font.BOLD, 12));
+		rankingSortSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, rankingSortSel, 10, SpringLayout.EAST, label);
 		l.putConstraint(SpringLayout.NORTH, rankingSortSel, LINE1_Y, SpringLayout.NORTH, p);
 		rankingSortSel.setSize(95, 20);
@@ -1387,7 +1411,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		p.add(rankingSortSel);
 
 		rankingFilterSel = new JComboBox<Integer>();
-		rankingFilterSel.setFont(new Font(fontFamily, Font.BOLD, 12));
+		rankingFilterSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, rankingFilterSel, 4, SpringLayout.EAST, rankingSortSel);
 		l.putConstraint(SpringLayout.NORTH, rankingFilterSel, LINE1_Y, SpringLayout.NORTH, p);
 		rankingFilterSel.setSize(44, 20);
@@ -1404,26 +1428,30 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 		p.add(rankingFilterSel);
 		label = new JLabel("試合以上のみを表示");
-		label.setFont(new Font(fontFamily, Font.PLAIN, 12));
+		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, label, 4, SpringLayout.EAST, rankingFilterSel);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(120, 20);
 		p.add(label);
 
+		final int COL2_X = COL1_X + FONT_SIZE_RANK * 25 + 10;
+		final int COL3_X = COL2_X + 130;
+		final int COL4_X = COL3_X + 160;
+
 		label = new JLabel("【マッチ一覧】");
-		label.setFont(new Font(fontFamily, Font.BOLD, 14));
+		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL2_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(100, 20);
 		p.add(label);
 		label = new JLabel("【ラウンド一覧】");
-		label.setFont(new Font(fontFamily, Font.BOLD, 14));
+		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL3_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(100, 20);
 		p.add(label);
 		label = new JLabel("【ラウンド詳細】");
-		label.setFont(new Font(fontFamily, Font.BOLD, 14));
+		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(100, 20);
@@ -1431,26 +1459,25 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		// under
 		myStatLabel = new JLabel("");
-		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, 18));
+		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_RANK));
 		l.putConstraint(SpringLayout.WEST, myStatLabel, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, myStatLabel, -10, SpringLayout.SOUTH, p);
-		myStatLabel.setPreferredSize(new Dimension(330, 28));
+		myStatLabel.setPreferredSize(new Dimension(FONT_SIZE_RANK * 16, FONT_SIZE_RANK + 10));
 		p.add(myStatLabel);
 
 		pingLabel = new JLabel("");
-		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, 16));
+		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_RANK));
 		l.putConstraint(SpringLayout.WEST, pingLabel, 40, SpringLayout.EAST, myStatLabel);
 		l.putConstraint(SpringLayout.SOUTH, pingLabel, -10, SpringLayout.SOUTH, p);
-		pingLabel.setPreferredSize(new Dimension(900, 20));
+		pingLabel.setPreferredSize(new Dimension(FONT_SIZE_RANK * 60, FONT_SIZE_RANK + 10));
 		p.add(pingLabel);
 
 		JScrollPane scroller;
 		JComboBox<RankingMaker> rankingMakerSel = new JComboBox<RankingMaker>();
-		rankingMakerSel.setFont(new Font(fontFamily, Font.BOLD, 12));
+		rankingMakerSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, rankingMakerSel, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, rankingMakerSel, -10, SpringLayout.NORTH, myStatLabel);
-		rankingMakerSel.setPreferredSize(new Dimension(150, 20));
-		rankingMakerSel.setBounds(COL1_X, LINE5_Y, 150, 25);
+		rankingMakerSel.setPreferredSize(new Dimension(150, FONT_SIZE_BASE + 8));
 		p.add(rankingMakerSel);
 		rankingMakerSel.addItem(new RankingMaker());
 		rankingMakerSel.addItem(new FeedFirstRankingMaker());
@@ -1465,25 +1492,27 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			displayRanking();
 		});
 		rankingDescLabel = new JLabel(Core.rankingMaker.getDesc());
-		rankingDescLabel.setFont(new Font(fontFamily, Font.PLAIN, 14));
+		rankingDescLabel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, rankingDescLabel, 10, SpringLayout.EAST, rankingMakerSel);
 		l.putConstraint(SpringLayout.SOUTH, rankingDescLabel, -10, SpringLayout.NORTH, myStatLabel);
-		rankingDescLabel.setPreferredSize(new Dimension(800, 20));
+		rankingDescLabel.setPreferredSize(new Dimension(800, FONT_SIZE_BASE + 8));
 		p.add(rankingDescLabel);
 
 		rankingArea = new NoWrapJTextPane();
 		rankingArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_RANK));
+		rankingArea.setMargin(new Insets(8, 8, 8, 8));
 		p.add(scroller = new JScrollPane(rankingArea));
 		l.putConstraint(SpringLayout.WEST, scroller, COL1_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
 		l.putConstraint(SpringLayout.SOUTH, scroller, -10, SpringLayout.NORTH, rankingMakerSel);
-		scroller.setPreferredSize(new Dimension(380, 0));
+		scroller.setPreferredSize(new Dimension(FONT_SIZE_RANK * 25, 0));
+		JScrollPane rankingAreaScroller = scroller;
 
 		matchSel = new JList<String>(new DefaultListModel<String>());
-		matchSel.setFont(new Font(fontFamily, Font.PLAIN, 16));
+		matchSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
 		p.add(scroller = new JScrollPane(matchSel));
-		l.putConstraint(SpringLayout.WEST, scroller, COL2_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.WEST, scroller, 10, SpringLayout.EAST, rankingAreaScroller);
+		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
 		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
 		scroller.setPreferredSize(new Dimension(120, 0));
 		matchSel.addListSelectionListener((ev) -> {
@@ -1498,10 +1527,10 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 
 		roundsSel = new JList<String>(new DefaultListModel<String>());
-		roundsSel.setFont(new Font(fontFamily, Font.PLAIN, 16));
+		roundsSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
 		p.add(scroller = new JScrollPane(roundsSel));
 		l.putConstraint(SpringLayout.WEST, scroller, COL3_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
 		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
 		scroller.setPreferredSize(new Dimension(150, 0));
 		roundsSel.addListSelectionListener((ev) -> {
@@ -1538,17 +1567,18 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		roundDetailArea = new NoWrapJTextPane(doc);
 		roundDetailArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_DETAIL));
+		roundDetailArea.setMargin(new Insets(8, 8, 8, 8));
 		p.add(scroller = new JScrollPane(roundDetailArea));
 		l.putConstraint(SpringLayout.WEST, scroller, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.EAST, scroller, -10, SpringLayout.EAST, p);
-		l.putConstraint(SpringLayout.NORTH, scroller, LINE2_Y, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
 		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
 
 		playerSel = new JComboBox<String>();
-		playerSel.setFont(new Font(fontFamily, Font.BOLD, 12));
+		playerSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, playerSel, COL2_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, playerSel, -10, SpringLayout.NORTH, rankingMakerSel);
-		playerSel.setPreferredSize(new Dimension(150, 20));
+		playerSel.setPreferredSize(new Dimension(150, FONT_SIZE_BASE + 8));
 		p.add(playerSel);
 		playerSel.addItemListener(new ItemListener() {
 			@Override
@@ -1564,10 +1594,10 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 
 		playerMarkingSel = new JComboBox<String>();
-		playerMarkingSel.setFont(new Font(fontFamily, Font.BOLD, 12));
+		playerMarkingSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, playerMarkingSel, 10, SpringLayout.EAST, playerSel);
 		l.putConstraint(SpringLayout.NORTH, playerMarkingSel, 0, SpringLayout.NORTH, playerSel);
-		playerMarkingSel.setPreferredSize(new Dimension(80, 20));
+		playerMarkingSel.setPreferredSize(new Dimension(80, FONT_SIZE_BASE + 8));
 		p.add(playerMarkingSel);
 		playerMarkingSel.addItem("");
 		playerMarkingSel.addItem("bold");
@@ -1597,19 +1627,19 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 
 		JButton removeMemberFromRoundButton = new JButton("ラウンドから参加者を外す");
-		removeMemberFromRoundButton.setFont(new Font(fontFamily, Font.BOLD, 14));
+		removeMemberFromRoundButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, removeMemberFromRoundButton, 10, SpringLayout.EAST, playerMarkingSel);
 		l.putConstraint(SpringLayout.NORTH, removeMemberFromRoundButton, 0, SpringLayout.NORTH, playerSel);
-		removeMemberFromRoundButton.setPreferredSize(new Dimension(180, 20));
+		removeMemberFromRoundButton.setPreferredSize(new Dimension(180, FONT_SIZE_BASE + 8));
 		removeMemberFromRoundButton.addActionListener(ev -> removePlayerOnCurrentRound());
 		p.add(removeMemberFromRoundButton);
 
 		JButton removeMemberFromMatchButton = new JButton("マッチから参加者を外す");
-		removeMemberFromMatchButton.setFont(new Font(fontFamily, Font.BOLD, 14));
+		removeMemberFromMatchButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, removeMemberFromMatchButton, 10, SpringLayout.EAST,
 				removeMemberFromRoundButton);
 		l.putConstraint(SpringLayout.NORTH, removeMemberFromMatchButton, 0, SpringLayout.NORTH, playerSel);
-		removeMemberFromMatchButton.setPreferredSize(new Dimension(180, 20));
+		removeMemberFromMatchButton.setPreferredSize(new Dimension(180, FONT_SIZE_BASE + 8));
 		removeMemberFromMatchButton.addActionListener(ev -> removePlayerOnCurrentMatch());
 		p.add(removeMemberFromMatchButton);
 
