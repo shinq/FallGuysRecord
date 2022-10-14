@@ -136,10 +136,15 @@ class Squad {
 	public int getScore() {
 		int score = 0;
 		for (Player p : members) {
-			if (p.finalScore >= 0 && !p.round.getDef().isHunt())
+			// ログ出力スコアを信用
+			if (p.finalScore >= 0 && !p.round.getDef().isHuntRace())
 				score += p.finalScore;
-			else
+			else {
 				score += p.score;
+				// hunt-race の場合のみ順位スコア*10を加算して順位狂わないように調整
+				if (p.round.getDef().isHuntRace() && p.ranking > 0)
+					score += (p.round.getPlayerCount() - p.ranking) * 10;
+			}
 		}
 		return score;
 	}
@@ -202,7 +207,7 @@ class Round {
 
 	public ArrayList<Player> byRank() {
 		ArrayList<Player> list = new ArrayList<Player>(byName.values());
-		Collections.sort(list, new Core.PlayerComparator(getDef().isHunt()));
+		Collections.sort(list, new Core.PlayerComparator(getDef().isHuntRace()));
 		return list;
 	}
 
@@ -220,7 +225,8 @@ class Round {
 		}
 		ArrayList<Squad> list = new ArrayList<Squad>(bySquadId.values());
 		for (Squad s : list)
-			Collections.sort(s.members, new Core.PlayerComparator(getDef().isHunt()));
+			Collections.sort(s.members, new Core.PlayerComparator(getDef().isHuntRace()));
+
 		Collections.sort(list, new Comparator<Squad>() {
 			@Override
 			public int compare(Squad s1, Squad s2) {
@@ -312,7 +318,7 @@ class Match {
 }
 
 enum RoundType {
-	RACE, HUNT, SURVIVAL, TEAM
+	RACE, HUNT_SURVIVE, HUNT_RACE, SURVIVAL, TEAM
 };
 
 class RoundDef {
@@ -333,8 +339,8 @@ class RoundDef {
 		this.isFinalNormally = isFinal;
 	}
 
-	public boolean isHunt() {
-		return type == RoundType.HUNT;
+	public boolean isHuntRace() {
+		return type == RoundType.HUNT_RACE;
 	}
 
 	static Map<String, RoundDef> roundNames = new HashMap<String, RoundDef>();
@@ -351,7 +357,7 @@ class RoundDef {
 		roundNames.put("FallGuy_Gauntlet_04", new RoundDef("Knight Fever", "ナイト・フィーバー", RoundType.RACE));
 		roundNames.put("FallGuy_WallGuys", new RoundDef("Wall Guys", "ウォールガイズ", RoundType.RACE));
 		roundNames.put("FallGuy_BiggestFan", new RoundDef("Big Fans", "ビッグファン", RoundType.RACE));
-		roundNames.put("FallGuy_IceClimb_01", new RoundDef("Freezy Peak", "スノーマウンテン", RoundType.RACE));
+		roundNames.put("FallGuy_IceClimb_01", new RoundDef("Freezy Peak", "ブルブル登山", RoundType.RACE));
 		roundNames.put("FallGuy_Tunnel_Race_01", new RoundDef("Roll On", "ロールオン", RoundType.RACE));
 		roundNames.put("FallGuy_Gauntlet_06", new RoundDef("Skyline Stumble", "スカイラインスタンブル", RoundType.RACE));
 		roundNames.put("FallGuy_ShortCircuit", new RoundDef("Short Circuit", "ショート・サーキット", RoundType.RACE));
@@ -364,15 +370,16 @@ class RoundDef {
 		roundNames.put("FallGuy_PipedUp", new RoundDef("Pipe Dream", "パイプドリーム", RoundType.RACE));
 		roundNames.put("FallGuy_Gauntlet_05", new RoundDef("Tundra Run", "ツンドラダッシュ", RoundType.RACE));
 
-		roundNames.put("FallGuy_TailTag_2", new RoundDef("Tail Tag", "しっぽオニ", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.HUNT));
-		roundNames.put("FallGuy_Hoops_Blockade", new RoundDef("Hoopsie Legends", "フープループレジェンド", RoundType.HUNT));
-		roundNames.put("FallGuy_SkeeFall", new RoundDef("Ski Fall", "スキーフォール", RoundType.HUNT));
-		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", RoundType.HUNT));
-		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", RoundType.HUNT));
-		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", RoundType.HUNT));
-		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT));
-		roundNames.put("FallGuy_FollowTheLeader_UNPACKED", new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT));
+		roundNames.put("FallGuy_TailTag_2", new RoundDef("Tail Tag", "しっぽオニ", RoundType.TEAM));
+		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.HUNT_SURVIVE));
+		roundNames.put("FallGuy_Hoops_Blockade", new RoundDef("Hoopsie Legends", "フープループレジェンド", RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_SkeeFall", new RoundDef("Ski Fall", "スキーフォール", RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_FollowTheLeader_UNPACKED",
+				new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT_RACE));
 
 		roundNames.put("FallGuy_Block_Party", new RoundDef("Block Party", "ブロックパーティー", RoundType.SURVIVAL));
 		roundNames.put("FallGuy_JumpClub_01", new RoundDef("Jump Club", "ジャンプクラブ", RoundType.SURVIVAL));
@@ -405,27 +412,29 @@ class RoundDef {
 				new RoundDef("Jump Showdown", "ジャンプ・ショーダウン", RoundType.SURVIVAL, true));
 		roundNames.put("FallGuy_Crown_Maze_Topdown", new RoundDef("Lost Temple", "ロストテンプル", RoundType.RACE, true));
 		roundNames.put("FallGuy_Tunnel_Final", new RoundDef("Roll Off", "ロールオフ", RoundType.SURVIVAL, true));
-		roundNames.put("FallGuy_Arena_01", new RoundDef("Royal Fumble", "ロイヤルファンブル", RoundType.HUNT, true));
+		roundNames.put("FallGuy_Arena_01", new RoundDef("Royal Fumble", "ロイヤルファンブル", RoundType.HUNT_SURVIVE, true));
 		roundNames.put("FallGuy_ThinIce", new RoundDef("Thin Ice", "パキパキアイス", RoundType.SURVIVAL, true));
 
 		roundNames.put("FallGuy_Gauntlet_09", new RoundDef("TRACK ATTACK", "トラックアタック", RoundType.RACE));
 		roundNames.put("FallGuy_ShortCircuit2", new RoundDef("SPEED CIRCUIT", "スピードサーキット", RoundType.RACE));
 		roundNames.put("FallGuy_SpinRing", new RoundDef("THE SWIVELLER", "リングスピナー", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_HoopsRevenge", new RoundDef("BOUNCE PARTY", "バウンスパーティー", RoundType.HUNT));
-		roundNames.put("FallGuy_1v1_Volleyfall", new RoundDef("VOLLEYFALL", "バレーフォール", RoundType.HUNT));
+		roundNames.put("FallGuy_HoopsRevenge", new RoundDef("BOUNCE PARTY", "バウンスパーティー", RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_1v1_Volleyfall", new RoundDef("VOLLEYFALL", "バレーフォール", RoundType.HUNT_SURVIVE));
 		roundNames.put("FallGuy_HexARing", new RoundDef("HEX-A-RING", "リングのノロイ", RoundType.SURVIVAL, true));
 		roundNames.put("FallGuy_BlastBall_ArenaSurvival",
 				new RoundDef("BLAST BALL", "ブラストボール", RoundType.SURVIVAL, true));
 
-		roundNames.put("FallGuy_BlueJay_UNPACKED", new RoundDef("BEAN HILL ZONE", "ジェリービーンズヒルゾーン", RoundType.HUNT));
+		roundNames.put("FallGuy_BlueJay_UNPACKED",
+				new RoundDef("BEAN HILL ZONE", "ジェリービーンズヒルゾーン", RoundType.HUNT_RACE));
 
 		roundNames.put("FallGuy_SatelliteHoppers", new RoundDef("COSMIC HIGHWAY", "コズミックハイウェイ", RoundType.RACE));
 		roundNames.put("FallGuy_Gauntlet_10", new RoundDef("SPACE RACE", "スペースレース", RoundType.RACE));
 		roundNames.put("FallGuy_Starlink", new RoundDef("STARCHART", "星空マップ", RoundType.RACE));
 		roundNames.put("FallGuy_Hoverboard_Survival_2",
 				new RoundDef("HYPERDRIE HIROES", "ハイパードライブ・ヒーロー", RoundType.RACE));
-		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PAINTERS", "ピクセル名人", RoundType.HUNT));
-		roundNames.put("FallGuy_FFA_Button_Bashers", new RoundDef("FRANTIC FACTORY", "ハチャメチャファクトリー", RoundType.HUNT));
+		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PAINTERS", "ピクセル名人", RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_FFA_Button_Bashers",
+				new RoundDef("FRANTIC FACTORY", "ハチャメチャファクトリー", RoundType.HUNT_RACE));
 
 		roundNames.put("FallGuy_Tip_Toe_Finale", new RoundDef("TIP TOE FINALE", "ヒヤヒヤロードファイナル", RoundType.RACE, true));
 		roundNames.put("FallGuy_HexSnake", new RoundDef("HEX-A-TERRESTRIAL", "止まるなキケンスペース", RoundType.SURVIVAL, true));
@@ -548,7 +557,7 @@ class FeedFirstRankingMaker extends RankingMaker {
 		}
 		// 順位に意味のある種目のみ
 		RoundDef def = RoundDef.get(r.name);
-		if (def.type == RoundType.RACE || def.type == RoundType.HUNT) {
+		if (def.type == RoundType.RACE || def.type == RoundType.HUNT_RACE) {
 			if (p.ranking == 1) // 1st
 				stat.totalScore += Core.PT_1ST;
 		}
@@ -893,19 +902,20 @@ class Core {
 
 		@Override
 		public int compare(Player p1, Player p2) {
-			int v;
+			if (p1.ranking > 0 && p2.ranking == 0)
+				return -1;
+			if (p2.ranking > 0 && p1.ranking == 0)
+				return 1;
+			if (p1.ranking > 0 && p2.ranking > 0)
+				return (int) Math.signum(p1.ranking - p2.ranking);
 			if (!isHunt) { // hunt 系の finalScore がバグっていて獲得スコアを出してきてしまう。これでは正確な順位付けができない。
-				v = (int) Math.signum(p2.finalScore - p1.finalScore);
+				int v = (int) Math.signum(p2.finalScore - p1.finalScore);
 				if (v != 0)
 					return v;
 			}
-			v = (int) Math.signum(p2.score - p1.score);
-			if (v != 0)
-				return v;
-			return (int) Math.signum(p1.ranking - p2.ranking);
+			return (int) Math.signum(p2.score - p1.score);
 		}
 	}
-
 }
 
 // wrap tailer
@@ -1164,7 +1174,7 @@ class FGReader extends TailerListenerAdapter {
 				int score = Integer.parseUnsignedInt(m.group(2));
 				Player player = Core.getCurrentRound().getByObjectId(playerObjectId);
 				if (player != null) {
-					if (player.score != score && player.qualified == null) {
+					if (player.score != score) {
 						System.out.println(player + " score " + player.score + " -> " + score);
 						player.score = score;
 						listener.roundUpdated();
@@ -1200,10 +1210,10 @@ class FGReader extends TailerListenerAdapter {
 						// スコア出力がない場合の仮スコア付
 						switch (RoundDef.get(r.name).type) {
 						case RACE:
-						case HUNT:
-							// HUNT が獲得スコアしか出力しなくなったため過剰スコアのプレイヤーがより上位順位となってしまうのを防ぐため順位スコア加算
 							player.score += r.byId.size() - qualifiedCount;
 							break;
+						case HUNT_RACE:
+						case HUNT_SURVIVE:
 						case SURVIVAL:
 						case TEAM:
 							if (player.score == 0)
@@ -1764,7 +1774,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			appendToRoundDetail("TOP: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000), "bold");
 		}
-		if (r.myFinish != null) {
+		if (r.myFinish != null && r.byName.get(Core.myName) != null) {
 			long t = r.myFinish.getTime() - r.start.getTime();
 			if (t < 0)
 				t += 24 * 60 * 60 * 1000;
