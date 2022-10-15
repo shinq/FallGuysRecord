@@ -1360,11 +1360,16 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		v = prop.getProperty("FONT_SIZE_DETAIL");
 		FONT_SIZE_DETAIL = v == null ? 16 : Integer.parseInt(v, 10);
 
+		System.err.println("FONT_SIZE_BASE=" + FONT_SIZE_BASE);
+		System.err.println("FONT_SIZE_BASE=" + FONT_SIZE_BASE);
+		System.err.println("FONT_SIZE_RANK=" + FONT_SIZE_RANK);
+		System.err.println("FONT_SIZE_DETAIL=" + FONT_SIZE_DETAIL);
 		Rectangle winRect = new Rectangle(10, 10, 1280, 628);
 		try (ObjectInputStream in = new ObjectInputStream(new FileInputStream("state.dat"))) {
 			winRect = (Rectangle) in.readObject();
 			Core.playerStyles = (Map<String, String>) in.readObject();
 			Core.servers = (Map<String, Map<String, String>>) in.readObject();
+			System.err.println(winRect);
 		} catch (IOException ex) {
 		}
 
@@ -1737,6 +1742,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		displayFooter();
 	}
 
+	/*
 	private void appendToRanking(String str, String style) {
 		style = style == null ? StyleContext.DEFAULT_STYLE : style;
 		StyledDocument doc = rankingArea.getStyledDocument();
@@ -1746,6 +1752,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			e.printStackTrace();
 		}
 	}
+	*/
 
 	private void appendToRoundDetail(String str, String style) {
 		style = style == null ? StyleContext.DEFAULT_STYLE : style;
