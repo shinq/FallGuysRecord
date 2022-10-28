@@ -403,7 +403,9 @@ class RoundDef {
 		roundNames.put("FallGuy_ChickenChase_01", new RoundDef("Pegwin Pursuit", "ペンギンチェイス", RoundType.TEAM));
 		roundNames.put("FallGuy_Basketfall_01", new RoundDef("Basketfall", "バスケットフォール", RoundType.TEAM));
 		roundNames.put("FallGuy_TerritoryControl_v2", new RoundDef("Power Trip", "パワートリップ", RoundType.TEAM));
+
 		roundNames.put("FallGuy_Invisibeans", new RoundDef("Sweet Thieves", "キャンディードロボー", RoundType.TEAM));
+		roundNames.put("FallGuy_PumpkinPie", new RoundDef("Treet Thieves", "お菓子ドロボー", RoundType.TEAM));
 
 		roundNames.put("FallGuy_FallMountain_Hub_Complete",
 				new RoundDef("Fall Mountain", "フォールマウンテン", RoundType.RACE, true));
@@ -642,7 +644,7 @@ class CandyRankingMaker extends RankingMaker {
 	@Override
 	public boolean isEnable(Round r) {
 		// thieves のみ
-		return "FallGuy_Invisibeans".equals(r.name);
+		return "FallGuy_Invisibeans".equals(r.name) || "FallGuy_PumpkinPie".equals(r.name);
 	}
 
 	@Override
@@ -1360,7 +1362,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		v = prop.getProperty("FONT_SIZE_DETAIL");
 		FONT_SIZE_DETAIL = v == null ? 16 : Integer.parseInt(v, 10);
 
-		System.err.println("FONT_SIZE_BASE=" + FONT_SIZE_BASE);
 		System.err.println("FONT_SIZE_BASE=" + FONT_SIZE_BASE);
 		System.err.println("FONT_SIZE_RANK=" + FONT_SIZE_RANK);
 		System.err.println("FONT_SIZE_DETAIL=" + FONT_SIZE_DETAIL);
