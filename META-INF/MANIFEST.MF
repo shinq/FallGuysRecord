@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Main-Class: FallGuysRecord
+Class-Path: jackson-core-2.13.3.jar jackson-databind-2.13.3.jar jackson-
+ annotations-2.13.3.jar commons-io-2.11.0.jar FallGuysRecord.jar
+
