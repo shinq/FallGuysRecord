@@ -8,15 +8,7 @@ import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.InetAddress;
@@ -27,20 +19,11 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.Timer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.swing.DefaultListModel;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JList;
-import javax.swing.JScrollPane;
-import javax.swing.JTextPane;
-import javax.swing.SpringLayout;
-import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
+import javax.swing.*;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultStyledDocument;
 import javax.swing.text.Style;
@@ -364,8 +347,7 @@ class RoundDef {
 		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_KingOfTheHill2"), RoundType.HUNT_RACE));
 		roundNames.put("FallGuy_Airtime", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Airtime"), RoundType.HUNT_RACE));
 		roundNames.put("FallGuy_FollowTheLeader", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FollowTheLeader"), RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_FollowTheLeader_UNPACKED",
-				new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FollowTheLeader_UNPACKED"), RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_FollowTheLeader_UNPACKED", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FollowTheLeader_UNPACKED"), RoundType.HUNT_RACE));
 
 		roundNames.put("FallGuy_Block_Party", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Block_Party"), RoundType.SURVIVAL));
 		roundNames.put("FallGuy_JumpClub_01", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_JumpClub_01"), RoundType.SURVIVAL));
@@ -373,8 +355,7 @@ class RoundDef {
 		roundNames.put("FallGuy_Tunnel_01", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Tunnel_01"), RoundType.SURVIVAL));
 		roundNames.put("FallGuy_SnowballSurvival", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_SnowballSurvival"), RoundType.SURVIVAL));
 		roundNames.put("FallGuy_FruitPunch", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FruitPunch"), RoundType.SURVIVAL));
-		roundNames.put("FallGuy_RobotRampage_Arena2",
-				new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_RobotRampage_Arena2"), RoundType.SURVIVAL));
+		roundNames.put("FallGuy_RobotRampage_Arena2", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_RobotRampage_Arena2"), RoundType.SURVIVAL));
 		roundNames.put("FallGuy_FruitBowl", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FruitBowl"), RoundType.SURVIVAL));
 
 		roundNames.put("FallGuy_ConveyorArena_01", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_ConveyorArena_01"), RoundType.TEAM));
@@ -393,11 +374,9 @@ class RoundDef {
 		roundNames.put("FallGuy_Invisibeans", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Invisibeans"), RoundType.TEAM));
 		roundNames.put("FallGuy_PumpkinPie", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_PumpkinPie"), RoundType.TEAM));
 
-		roundNames.put("FallGuy_FallMountain_Hub_Complete",
-				new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FallMountain_Hub_Complete"), RoundType.RACE, true));
+		roundNames.put("FallGuy_FallMountain_Hub_Complete", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FallMountain_Hub_Complete"), RoundType.RACE, true));
 		roundNames.put("FallGuy_FloorFall", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FloorFall"), RoundType.SURVIVAL, true));
-		roundNames.put("FallGuy_JumpShowdown_01",
-				new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_JumpShowdown_01"), RoundType.SURVIVAL, true));
+		roundNames.put("FallGuy_JumpShowdown_01", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_JumpShowdown_01"), RoundType.SURVIVAL, true));
 		roundNames.put("FallGuy_Crown_Maze_Topdown", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Crown_Maze_Topdown"), RoundType.RACE, true));
 		roundNames.put("FallGuy_Tunnel_Final", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Tunnel_Final"), RoundType.SURVIVAL, true));
 		roundNames.put("FallGuy_Arena_01", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Arena_01"), RoundType.HUNT_SURVIVE, true));
@@ -409,20 +388,16 @@ class RoundDef {
 		roundNames.put("FallGuy_HoopsRevenge", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_HoopsRevenge"), RoundType.HUNT_RACE));
 		roundNames.put("FallGuy_1v1_Volleyfall", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_1v1_Volleyfall"), RoundType.HUNT_SURVIVE));
 		roundNames.put("FallGuy_HexARing", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_HexARing"), RoundType.SURVIVAL, true));
-		roundNames.put("FallGuy_BlastBall_ArenaSurvival",
-				new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_BlastBall_ArenaSurvival"), RoundType.SURVIVAL, true));
+		roundNames.put("FallGuy_BlastBall_ArenaSurvival", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_BlastBall_ArenaSurvival"), RoundType.SURVIVAL, true));
 
-		roundNames.put("FallGuy_BlueJay_UNPACKED",
-				new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_BlueJay_UNPACKED"), RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_BlueJay_UNPACKED", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_BlueJay_UNPACKED"), RoundType.HUNT_RACE));
 
 		roundNames.put("FallGuy_SatelliteHoppers", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_SatelliteHoppers"), RoundType.RACE));
 		roundNames.put("FallGuy_Gauntlet_10", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Gauntlet_10"), RoundType.RACE));
 		roundNames.put("FallGuy_Starlink", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Starlink"), RoundType.RACE));
-		roundNames.put("FallGuy_Hoverboard_Survival_2",
-				new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Hoverboard_Survival_2"), RoundType.RACE));
+		roundNames.put("FallGuy_Hoverboard_Survival_2", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Hoverboard_Survival_2"), RoundType.RACE));
 		roundNames.put("FallGuy_PixelPerfect", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_PixelPerfect"), RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_FFA_Button_Bashers",
-				new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FFA_Button_Bashers"), RoundType.HUNT_RACE));
+		roundNames.put("FallGuy_FFA_Button_Bashers", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_FFA_Button_Bashers"), RoundType.HUNT_RACE));
 
 		roundNames.put("FallGuy_Tip_Toe_Finale", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_Tip_Toe_Finale"), RoundType.RACE, true));
 		roundNames.put("FallGuy_HexSnake", new RoundDef(FallGuysRecord.languageResources.getString("FallGuy_HexSnake"), RoundType.SURVIVAL, true));
@@ -1317,8 +1292,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	static String monospacedFontFamily = "MS Gothic";
 	static String fontFamily = "Meiryo UI";
 
-	static ResourceBundle languageResources = ResourceBundle.getBundle("resources.lang.language", Locale.getDefault());
-
+	static ResourceBundle languageResources;
 	@SuppressWarnings("unchecked")
 	public static void main(String[] args) throws Exception {
 
@@ -1329,27 +1303,36 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		//	UIManager.setLookAndFeel("com.sun.java.swing.plaf.motif.MotifLookAndFeel");
 		UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
 
-		Properties prop = new Properties();
-		try (BufferedReader br = new BufferedReader(new FileReader("settings.ini"))) {
-			prop.load(br);
-		} catch (FileNotFoundException e) {
-		}
-		// default values
-		String v = prop.getProperty("LANGUAGE");
-		Core.LANG_EN = v == null || "en".equals(v);
-		v = prop.getProperty("POINT_1ST");
+		SettingsManager.loadFile();
+
+		// TODO: save default values to file
+		String v = SettingsManager.getProperty("POINT_1ST");
 		Core.PT_1ST = v == null ? 4 : Integer.parseInt(v, 10);
-		v = prop.getProperty("POINT_FINALS");
+		v = SettingsManager.getProperty("POINT_FINALS");
 		Core.PT_FINALS = v == null ? 10 : Integer.parseInt(v, 10);
-		v = prop.getProperty("POINT_WIN");
+		v = SettingsManager.getProperty("POINT_WIN");
 		Core.PT_WIN = v == null ? 10 : Integer.parseInt(v, 10);
 
-		v = prop.getProperty("FONT_SIZE_BASE");
+		v = SettingsManager.getProperty("FONT_SIZE_BASE");
 		FONT_SIZE_BASE = v == null ? 12 : Integer.parseInt(v, 10);
-		v = prop.getProperty("FONT_SIZE_RANK");
+		v = SettingsManager.getProperty("FONT_SIZE_RANK");
 		FONT_SIZE_RANK = v == null ? 16 : Integer.parseInt(v, 10);
-		v = prop.getProperty("FONT_SIZE_DETAIL");
+		v = SettingsManager.getProperty("FONT_SIZE_DETAIL");
 		FONT_SIZE_DETAIL = v == null ? 16 : Integer.parseInt(v, 10);
+
+		v = SettingsManager.getProperty("LANGUAGE");
+		if(v == null || v.isEmpty())
+			languageResources = ResourceBundle.getBundle("resources.lang.language", Locale.getDefault());
+		else{
+			//Property file encoding bypass
+			v = new String(SettingsManager.getProperty("LANGUAGE").getBytes(), StandardCharsets.UTF_8);
+			if(v.equals("日本語"))
+				languageResources = ResourceBundle.getBundle("resources.lang.language", Locale.JAPAN);
+			else{
+				SettingsManager.setProperty("LANGUAGE", "English"); //use default
+				languageResources = ResourceBundle.getBundle("resources.lang.language", Locale.ENGLISH);
+			}
+		}
 
 		System.err.println("FONT_SIZE_BASE=" + FONT_SIZE_BASE);
 		System.err.println("FONT_SIZE_RANK=" + FONT_SIZE_RANK);
@@ -1369,7 +1352,14 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		frame.setResizable(true);
 		frame.setBounds(winRect.x, winRect.y, winRect.width, winRect.height);
 		frame.setTitle("Fall Guys Record");
-		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+		frame.addWindowListener(new WindowAdapter() {
+			@Override
+			public void windowClosing(WindowEvent e) {
+				SettingsManager.saveFile();
+				System.exit(0);
+			}
+		});
 		frame.setVisible(true);
 	}
 
@@ -1379,6 +1369,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	JList<String> roundsSel;
 	JTextPane roundDetailArea;
 	JTextPane rankingArea;
+	JComboBox<String> languageSel;
 	JComboBox<String> rankingSortSel;
 	JComboBox<Integer> rankingFilterSel;
 	JComboBox<String> playerSel;
@@ -1390,6 +1381,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	static final int COL1_X = 10;
 
 	FallGuysRecord() {
+
 		SpringLayout l = new SpringLayout();
 		Container p = getContentPane();
 		p.setLayout(l);
@@ -1432,11 +1424,38 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			displayRanking();
 		});
 		p.add(rankingFilterSel);
-		label = new JLabel(FallGuysRecord.languageResources.getString("moreThanOneMatch"));
+
+		label = new JLabel(FallGuysRecord.languageResources.getString("matchCount"));
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, label, 4, SpringLayout.EAST, rankingFilterSel);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(120, 20);
+		p.add(label);
+
+		languageSel = new JComboBox<String>();
+		languageSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.EAST, languageSel, -15, SpringLayout.EAST, p);
+		l.putConstraint(SpringLayout.NORTH, languageSel, LINE1_Y, SpringLayout.NORTH, p);
+		languageSel.setPreferredSize(new Dimension(80, FONT_SIZE_BASE + 6));
+		p.add(languageSel);
+
+		languageSel.addItem("English");
+		languageSel.addItem("日本語");
+
+		languageSel.addActionListener(ev ->{
+			SettingsManager.setProperty("LANGUAGE", languageSel.getItemAt(languageSel.getSelectedIndex()));
+			synchronized (languageSel){
+				SettingsManager.saveFile();
+				JOptionPane.showMessageDialog(frame,"Application will be closed. Run it again to see changes.");
+				System.exit(0);
+			}
+		});
+
+		label = new JLabel("LANGUAGE\uD83C\uDF0E:");
+		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.EAST, label, -85, SpringLayout.EAST, languageSel );
+		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y+1, SpringLayout.NORTH, p);
+		label.setSize(50, 20);
 		p.add(label);
 
 		final int COL2_X = COL1_X + FONT_SIZE_RANK * 25 + 10;
@@ -2023,3 +2042,48 @@ class ServerSocketMutex {
 		ss = null;
 	}
 }
+
+class SettingsManager{
+	public static Properties prop = new Properties();
+
+	public static String getProperty(String name){
+		if(prop == null)
+			loadFile();
+		return prop.getProperty(name);
+	}
+
+	public static void setProperty(String name, String value){
+		if(prop == null)
+			loadFile();
+		prop.setProperty(name, value);
+	}
+
+	public static void saveFile(){
+		try {
+			File props = new File("settings.ini");
+			props.delete();
+			props.createNewFile();
+			FileOutputStream fos = new FileOutputStream(props);
+			prop.store(fos,"Settings");
+			fos.flush();
+			fos.close();
+		} catch (Exception e) {
+			System.err.println("Settings file not found. Default settings will saved on exit.");
+		}
+	}
+	public static void loadFile(){
+
+		try {
+			File props = new File("settings.ini");
+			if(props.exists() == false){
+				return;
+			}
+			FileInputStream fis = new FileInputStream(props);
+			prop.load(fis);
+			fis.close();
+		} catch (Exception e) {
+			System.err.println("Settings file not found. Default settings will used.");
+		}
+	}
+}
+
