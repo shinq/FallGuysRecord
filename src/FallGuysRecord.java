@@ -161,6 +161,7 @@ class Round {
 	Date end;
 	Date topFinish;
 	Date myFinish;
+	int myPlayerId;
 	Map<String, Player> byName = new HashMap<String, Player>();
 	Map<Integer, Player> byId = new HashMap<Integer, Player>();
 
@@ -441,6 +442,12 @@ class RoundDef {
 		roundNames.put("FallGuy_Tip_Toe_Finale", new RoundDef("TIP TOE FINALE", "ヒヤヒヤロードファイナル", RoundType.RACE, true));
 		roundNames.put("FallGuy_HexSnake", new RoundDef("HEX-A-TERRESTRIAL", "止まるなキケンスペース", RoundType.SURVIVAL, true));
 		// round_tiptoefinale
+
+		roundNames.put("FallGuy_SlideChute", new RoundDef("SPEED SLIDER", "スピードスライダー", RoundType.RACE, false));
+		roundNames.put("FallGuy_FollowTheLine", new RoundDef("PUZZLE PATH", "パズルパス", RoundType.RACE, false));
+		roundNames.put("FallGuy_SlippySlide", new RoundDef("HOOP SHOOT", "リングシュート", RoundType.HUNT_RACE, false));
+		roundNames.put("FallGuy_BlastBallRuins", new RoundDef("BLASTLANTIS", "ブラストランティス", RoundType.SURVIVAL, false));
+		roundNames.put("FallGuy_Kraken_Attack", new RoundDef("KRAKEN SLAM", "クラーケンスラム", RoundType.SURVIVAL, true));
 	}
 
 	public static RoundDef get(String name) {
@@ -992,8 +999,11 @@ class FGReader extends TailerListenerAdapter {
 	static Pattern patternLoadedRound = Pattern
 			.compile("\\[StateGameLoading\\] Finished loading game level, assumed to be ([^.]+)\\.");
 
+	static Pattern patternLocalPlayerId = Pattern
+			.compile(
+					"\\[ClientGameManager\\] Handling bootstrap for local player FallGuy \\[(\\d+)\\] \\(FG.Common.MPGNetObject\\), playerID = (\\d+), squadID = (\\d+)");
 	static Pattern patternPlayerSpawn = Pattern.compile(
-			"\\[CameraDirector\\] Adding Spectator target (.+) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
+			"\\[CameraDirector\\] Adding Spectator target (.+) \\((.+)\\) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
 	static Pattern patternPlayerObjectId = Pattern.compile(
 			"\\[ClientGameManager\\] Handling bootstrap for [^ ]+ player FallGuy \\[(\\d+)\\].+, playerID = (\\d+)");
 
@@ -1063,6 +1073,10 @@ class FGReader extends TailerListenerAdapter {
 			}
 			listener.showUpdated();
 		}
+		m = patternLocalPlayerId.matcher(line);
+		if (m.find()) {
+			Core.getCurrentRound().myPlayerId = Integer.parseUnsignedInt(m.group(2));
+		}
 		switch (readState) {
 		case SHOW_DETECTING: // start show or round detection
 		case ROUND_DETECTING: // start round detection
@@ -1111,12 +1125,11 @@ class FGReader extends TailerListenerAdapter {
 			m = patternPlayerSpawn.matcher(line);
 			if (m.find()) {
 				String name = m.group(1);
-				int partyId = m.group(2).length() == 0 ? 0 : Integer.parseUnsignedInt(m.group(2)); // 空文字列のことあり
-				int squadId = Integer.parseUnsignedInt(m.group(3));
-				int playerId = Integer.parseUnsignedInt(m.group(4));
-				int sep = name.indexOf("_");
-				String playerName = name.substring(sep + 1).replaceFirst(" \\(.+\\)$", "");
-				String platform = name.substring(0, sep);
+				String platform = m.group(2);
+				int partyId = m.group(3).length() == 0 ? 0 : Integer.parseUnsignedInt(m.group(3)); // 空文字列のことあり
+				int squadId = Integer.parseUnsignedInt(m.group(4));
+				int playerId = Integer.parseUnsignedInt(m.group(5));
+				String playerName = name;
 
 				Player p = Core.getCurrentRound().byId.get(playerId);
 				if (p == null) {
@@ -1132,7 +1145,8 @@ class FGReader extends TailerListenerAdapter {
 						+ " squadId=" + squadId + ") spwaned.");
 				listener.roundUpdated();
 				// 現在の自分の objectId 更新
-				if (Core.myName.equals(p.name))
+				// if (Core.myName.equals(p.name))
+				if (Core.getCurrentRound().myPlayerId == p.id)
 					myObjectId = p.objectId;
 				break;
 			}
@@ -1227,7 +1241,8 @@ class FGReader extends TailerListenerAdapter {
 						System.out.println("Qualified " + player + " rank=" + player.ranking + " " + player.score);
 
 						// 優勝なら match に勝利数書き込み(squads win 未対応)
-						if (Core.myName.equals(player.name) && r.isFinal()) {
+						// if (Core.myName.equals(player.name) && r.isFinal()) {
+						if (r.myPlayerId == player.id && r.isFinal()) {
 							Core.getCurrentMatch().winStreak = 1;
 							List<Match> matches = Core.matches;
 							if (matches.size() > 1)
@@ -1782,12 +1797,12 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			appendToRoundDetail("TOP: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000), "bold");
 		}
-		if (r.myFinish != null && r.byName.get(Core.myName) != null) {
+		if (r.myFinish != null && r.byId.get(r.myPlayerId) != null) {
 			long t = r.myFinish.getTime() - r.start.getTime();
 			if (t < 0)
 				t += 24 * 60 * 60 * 1000;
 			appendToRoundDetail("OWN: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
-					+ "." + String.format("%03d", t % 1000) + " #" + r.byName.get(Core.myName).ranking, "bold");
+					+ "." + String.format("%03d", t % 1000) + " #" + r.byId.get(r.myPlayerId).ranking, "bold");
 		}
 		if (r.isFinal()) {
 			appendToRoundDetail("********** FINAL **********", "bold");
@@ -1810,7 +1825,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 							null);
 
 					for (Player p : s.members)
-						appendToRoundDetail((Core.myName.equals(p.name) ? "★" : p.partyId != 0 ? "p " : "　") + " "
+						appendToRoundDetail((r.myPlayerId == p.id ? "★" : p.partyId != 0 ? "p " : "　") + " "
 								+ (p.qualified == null ? "　" : p.qualified ? "○" : "✕") + Core.pad(p.score)
 								+ "pt(" + (p.finalScore < 0 ? "  " : Core.pad(p.finalScore)) + ")" + " " + p,
 								Core.playerStyles.get(p.name));
@@ -1826,7 +1841,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					buf.append(Core.pad(p.squadId)).append(" ");
 				buf.append(Core.pad(p.score)).append("pt(").append(p.finalScore < 0 ? "  " : Core.pad(p.finalScore))
 						.append(")").append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
-				buf.append(Core.myName.equals(p.name) ? "★" : "　").append(p);
+				buf.append(r.myPlayerId == p.id ? "★" : "　").append(p);
 				appendToRoundDetail(new String(buf), Core.playerStyles.get(p.name));
 			}
 		}
