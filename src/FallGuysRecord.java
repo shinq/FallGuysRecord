@@ -445,7 +445,7 @@ class RoundDef {
 
 		roundNames.put("FallGuy_SlideChute", new RoundDef("SPEED SLIDER", "スピードスライダー", RoundType.RACE, false));
 		roundNames.put("FallGuy_FollowTheLine", new RoundDef("PUZZLE PATH", "パズルパス", RoundType.RACE, false));
-		roundNames.put("FallGuy_SlippySlide", new RoundDef("HOOP SHOOT", "リングシュート", RoundType.HUNT_RACE, false));
+		roundNames.put("FallGuy_SlippySlide", new RoundDef("HOOP CHUTE", "リングシュート", RoundType.HUNT_RACE, false));
 		roundNames.put("FallGuy_BlastBallRuins", new RoundDef("BLASTLANTIS", "ブラストランティス", RoundType.SURVIVAL, false));
 		roundNames.put("FallGuy_Kraken_Attack", new RoundDef("KRAKEN SLAM", "クラーケンスラム", RoundType.SURVIVAL, true));
 	}
@@ -1002,10 +1002,12 @@ class FGReader extends TailerListenerAdapter {
 	static Pattern patternLocalPlayerId = Pattern
 			.compile(
 					"\\[ClientGameManager\\] Handling bootstrap for local player FallGuy \\[(\\d+)\\] \\(FG.Common.MPGNetObject\\), playerID = (\\d+), squadID = (\\d+)");
-	static Pattern patternPlayerSpawn = Pattern.compile(
-			"\\[CameraDirector\\] Adding Spectator target (.+) \\((.+)\\) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
 	static Pattern patternPlayerObjectId = Pattern.compile(
 			"\\[ClientGameManager\\] Handling bootstrap for [^ ]+ player FallGuy \\[(\\d+)\\].+, playerID = (\\d+)");
+	static Pattern patternPlayerSpawn = Pattern.compile(
+			"\\[CameraDirector\\] Adding Spectator target (.+) \\((.+)\\) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
+	static Pattern patternPlayerSpawnFinish = Pattern.compile(
+			"\\[ClientGameManager\\] Finalising spawn for player FallGuy \\[(\\d+)\\] (.+) \\((.+)\\) ");
 
 	static Pattern patternScoreUpdated = Pattern.compile("Player (\\d+) score = (\\d+)");
 	static Pattern patternPlayerResult = Pattern.compile(
@@ -1148,6 +1150,17 @@ class FGReader extends TailerListenerAdapter {
 				// if (Core.myName.equals(p.name))
 				if (Core.getCurrentRound().myPlayerId == p.id)
 					myObjectId = p.objectId;
+				break;
+			}
+			// こちらで取れる名前は旧名称だった…
+			m = patternPlayerSpawnFinish.matcher(line);
+			if (m.find()) {
+				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
+				String name = m.group(2);
+				Player p = Core.getCurrentRound().getByObjectId(playerObjectId);
+				if (p != null) {
+					p.name = name;
+				}
 				break;
 			}
 			if (line.contains("[StateGameLoading] Starting the game.")) {
@@ -1387,6 +1400,16 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			Core.servers = (Map<String, Map<String, String>>) in.readObject();
 			System.err.println(winRect);
 		} catch (IOException ex) {
+		}
+		List<Map.Entry<String, String>> list = new ArrayList<Map.Entry<String, String>>(Core.playerStyles.entrySet());
+		for (Map.Entry<String, String> e : list) {
+			String name = e.getKey();
+			if (name == null)
+				continue;
+			if (!name.matches("...\\.\\.\\....")) {
+				String newName = name.replaceFirst("(.{3}).+(.{3})", "$1...$2");
+				Core.playerStyles.put(newName, e.getValue());
+			}
 		}
 
 		Core.load();
