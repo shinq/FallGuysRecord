@@ -791,7 +791,8 @@ class Core {
 
 	//////////////////////////////////////////////////////////////
 	public static String currentServerIp;
-	public static String myName;
+	public static String myName; // 自分を決めるキーだが省略されているため他者と被る可能性も…またPC版では３単語名ベースになる
+	public static String myNameFull; // 現状未使用
 	public static RankingMaker rankingMaker = new RankingMaker();
 	public static final List<Match> matches = new ArrayList<Match>();
 	public static final List<Round> rounds = new ArrayList<Round>();
@@ -976,10 +977,6 @@ class FGReader extends TailerListenerAdapter {
 	@Override
 	public void handle(String line) {
 		try {
-			if (Core.myName == null && line.contains("[UserInfo] Player Name:")) {
-				String[] sp = line.split("Player Name: ", 2);
-				Core.myName = sp[1];
-			}
 			parseLine(line);
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -1032,6 +1029,10 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	private void parseLine(String line) {
+		if (line.contains("[UserInfo] Player Name:")) {
+			String[] sp = line.split("Player Name: ", 2);
+			Core.myNameFull = sp[1];
+		}
 		Matcher m = patternServer.matcher(line);
 		if (m.find()) {
 			String showName = "_";
@@ -1077,7 +1078,8 @@ class FGReader extends TailerListenerAdapter {
 		}
 		m = patternLocalPlayerId.matcher(line);
 		if (m.find()) {
-			Core.getCurrentRound().myPlayerId = Integer.parseUnsignedInt(m.group(2));
+			Round r = Core.getCurrentRound();
+			r.myPlayerId = Integer.parseUnsignedInt(m.group(2));
 		}
 		switch (readState) {
 		case SHOW_DETECTING: // start show or round detection
@@ -1155,14 +1157,17 @@ class FGReader extends TailerListenerAdapter {
 			// こちらで取れる名前は旧名称だった…
 			m = patternPlayerSpawnFinish.matcher(line);
 			if (m.find()) {
+				Round r = Core.getCurrentRound();
 				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
 				String name = m.group(2);
-				Player p = Core.getCurrentRound().getByObjectId(playerObjectId);
+				Player p = r.getByObjectId(playerObjectId);
 				if (p != null) {
 					if (name.length() == 5) // 名前が短いと'a...b'のように前後１文字に短縮されている。元の名前の末尾３文字を活かす
 						p.name = name.substring(0, 4) + p.name.substring(p.name.length() - 3);
 					else
 						p.name = name;
+					if (r.myPlayerId == p.id)
+						Core.myName = p.name;
 				}
 				break;
 			}
