@@ -4,6 +4,8 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Insets;
 import java.awt.Rectangle;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
 import java.awt.event.WindowAdapter;
@@ -50,6 +52,7 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JScrollPane;
+import javax.swing.JTextField;
 import javax.swing.JTextPane;
 import javax.swing.SpringLayout;
 import javax.swing.SwingUtilities;
@@ -97,7 +100,8 @@ class PlayerStat {
 	}
 
 	public String toString() {
-		return name;//  + "(" + platform + ")"
+		String memo = Core.playerMemos.get(name);
+		return (memo == null ? "" : "[" + memo + "]") + name;// + "(" + platform + ")";
 	}
 }
 
@@ -121,7 +125,8 @@ class Player {
 	}
 
 	public String toString() {
-		return name + "(" + platform + ")";
+		String memo = Core.playerMemos.get(name);
+		return (memo == null ? "" : "[" + memo + "]") + name + "(" + platform + ")";
 	}
 }
 
@@ -798,6 +803,7 @@ class Core {
 	public static final List<Round> rounds = new ArrayList<Round>();
 	public static final Map<String, PlayerStat> stats = new HashMap<String, PlayerStat>();
 	public static Map<String, String> playerStyles = new HashMap<String, String>();
+	public static Map<String, String> playerMemos = new HashMap<String, String>();
 	public static Map<String, Map<String, String>> servers = new HashMap<String, Map<String, String>>();
 
 	public static void load() {
@@ -1406,7 +1412,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			winRect = (Rectangle) in.readObject();
 			Core.playerStyles = (Map<String, String>) in.readObject();
 			Core.servers = (Map<String, Map<String, String>>) in.readObject();
-			System.err.println(winRect);
+			Core.playerMemos = (Map<String, String>) in.readObject();
 		} catch (IOException ex) {
 		}
 		List<Map.Entry<String, String>> list = new ArrayList<Map.Entry<String, String>>(Core.playerStyles.entrySet());
@@ -1439,7 +1445,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	JComboBox<String> rankingSortSel;
 	JComboBox<Integer> rankingFilterSel;
 	JComboBox<String> playerSel;
-	JComboBox<String> playerMarkingSel;
+	JComboBox<String> playerStyleSel;
+	JTextField playerMemo;
 	JLabel rankingDescLabel;
 	boolean ignoreSelEvent;
 
@@ -1646,31 +1653,35 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			@Override
 			public void itemStateChanged(ItemEvent e) {
 				String player = (String) playerSel.getSelectedItem();
-				String before = (String) playerMarkingSel.getSelectedItem();
+				if (player == null)
+					return;
+				player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
+				playerMemo.setText(Core.playerMemos.get(player));
+				String before = (String) playerStyleSel.getSelectedItem();
 				String after = Core.playerStyles.get(player);
 				if ((before == null && after == null) || (before != null && before.equals(after)))
 					return;
 				ignoreSelEvent = true;
-				playerMarkingSel.setSelectedItem(after);
+				playerStyleSel.setSelectedItem(after);
 			}
 		});
 
-		playerMarkingSel = new JComboBox<String>();
-		playerMarkingSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, playerMarkingSel, 10, SpringLayout.EAST, playerSel);
-		l.putConstraint(SpringLayout.NORTH, playerMarkingSel, 0, SpringLayout.NORTH, playerSel);
-		playerMarkingSel.setPreferredSize(new Dimension(80, FONT_SIZE_BASE + 8));
-		p.add(playerMarkingSel);
-		playerMarkingSel.addItem("");
-		playerMarkingSel.addItem("bold");
-		playerMarkingSel.addItem("underscore");
-		playerMarkingSel.addItem("green");
-		playerMarkingSel.addItem("blue");
-		playerMarkingSel.addItem("cyan");
-		playerMarkingSel.addItem("magenta");
-		playerMarkingSel.addItem("yellow");
-		playerMarkingSel.addItem("red");
-		playerMarkingSel.addItemListener(new ItemListener() {
+		playerStyleSel = new JComboBox<String>();
+		playerStyleSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.WEST, playerStyleSel, 10, SpringLayout.EAST, playerSel);
+		l.putConstraint(SpringLayout.NORTH, playerStyleSel, 0, SpringLayout.NORTH, playerSel);
+		playerStyleSel.setPreferredSize(new Dimension(80, FONT_SIZE_BASE + 8));
+		p.add(playerStyleSel);
+		playerStyleSel.addItem("");
+		playerStyleSel.addItem("bold");
+		playerStyleSel.addItem("underscore");
+		playerStyleSel.addItem("green");
+		playerStyleSel.addItem("blue");
+		playerStyleSel.addItem("cyan");
+		playerStyleSel.addItem("magenta");
+		playerStyleSel.addItem("yellow");
+		playerStyleSel.addItem("red");
+		playerStyleSel.addItemListener(new ItemListener() {
 			@Override
 			public void itemStateChanged(ItemEvent e) {
 				if (ignoreSelEvent) {
@@ -1678,7 +1689,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					return;
 				}
 				String player = (String) playerSel.getSelectedItem();
-				String style = (String) playerMarkingSel.getSelectedItem();
+				player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
+				String style = (String) playerStyleSel.getSelectedItem();
 				if (style == null || style.length() == 0)
 					Core.playerStyles.remove(player);
 				else
@@ -1688,9 +1700,30 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			}
 		});
 
+		playerMemo = new JTextField();
+		playerMemo.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.WEST, playerMemo, 10, SpringLayout.EAST, playerStyleSel);
+		l.putConstraint(SpringLayout.NORTH, playerMemo, 0, SpringLayout.NORTH, playerSel);
+		playerMemo.setPreferredSize(new Dimension(80, FONT_SIZE_BASE + 8));
+		p.add(playerMemo);
+		playerMemo.addFocusListener(new FocusAdapter() {
+			@Override
+			public void focusLost(FocusEvent e) {
+				String player = (String) playerSel.getSelectedItem();
+				player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
+				String memo = playerMemo.getText();
+				if (memo == null || memo.length() == 0)
+					Core.playerMemos.remove(player);
+				else
+					Core.playerMemos.put(player, memo);
+				refreshRoundDetail(getSelectedRound());
+				displayRanking();
+			}
+		});
+
 		JButton removeMemberFromRoundButton = new JButton("ラウンドから参加者を外す");
 		removeMemberFromRoundButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
-		l.putConstraint(SpringLayout.WEST, removeMemberFromRoundButton, 10, SpringLayout.EAST, playerMarkingSel);
+		l.putConstraint(SpringLayout.WEST, removeMemberFromRoundButton, 10, SpringLayout.EAST, playerMemo);
 		l.putConstraint(SpringLayout.NORTH, removeMemberFromRoundButton, 0, SpringLayout.NORTH, playerSel);
 		removeMemberFromRoundButton.setPreferredSize(new Dimension(180, FONT_SIZE_BASE + 8));
 		removeMemberFromRoundButton.addActionListener(ev -> removePlayerOnCurrentRound());
@@ -1701,7 +1734,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.WEST, removeMemberFromMatchButton, 10, SpringLayout.EAST,
 				removeMemberFromRoundButton);
 		l.putConstraint(SpringLayout.NORTH, removeMemberFromMatchButton, 0, SpringLayout.NORTH, playerSel);
-		removeMemberFromMatchButton.setPreferredSize(new Dimension(180, FONT_SIZE_BASE + 8));
+		removeMemberFromMatchButton.setPreferredSize(new Dimension(170, FONT_SIZE_BASE + 8));
 		removeMemberFromMatchButton.addActionListener(ev -> removePlayerOnCurrentMatch());
 		p.add(removeMemberFromMatchButton);
 
@@ -1712,6 +1745,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					out.writeObject(frame.getBounds());
 					out.writeObject(Core.playerStyles);
 					out.writeObject(Core.servers);
+					out.writeObject(Core.playerMemos);
 				} catch (IOException ex) {
 					ex.printStackTrace();
 				}
@@ -1937,26 +1971,28 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			return;
 		synchronized (Core.listLock) {
 			for (Player player : r.byName.values()) {
-				FallGuysRecord.frame.playerSel.addItem(player.name);
+				FallGuysRecord.frame.playerSel.addItem(player.toString());
 			}
 		}
 		//playerSel.setSelectedItem(Core.myName);
 	}
 
 	private void removePlayerOnCurrentRound() {
-		String name_selected = (String) playerSel.getSelectedItem();
+		String player = (String) playerSel.getSelectedItem();
+		player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
 		Round r = getSelectedRound();
-		r.remove(name_selected);
+		r.remove(player);
 		Core.updateStats();
 		roundSelected(r);
 		displayRanking();
 	}
 
 	private void removePlayerOnCurrentMatch() {
-		String name_selected = (String) playerSel.getSelectedItem();
+		String player = (String) playerSel.getSelectedItem();
+		player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
 		Match m = getSelectedMatch();
 		for (Round r : m == null ? Core.rounds : m.rounds)
-			r.remove(name_selected);
+			r.remove(player);
 		Core.updateStats();
 		roundSelected(getSelectedRound());
 		displayRanking();
