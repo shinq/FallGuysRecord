@@ -1159,7 +1159,10 @@ class FGReader extends TailerListenerAdapter {
 				String name = m.group(2);
 				Player p = Core.getCurrentRound().getByObjectId(playerObjectId);
 				if (p != null) {
-					p.name = name;
+					if (name.length() == 5) // 名前が短いと'a...b'のように前後１文字に短縮されている。元の名前の末尾３文字を活かす
+						p.name = name.substring(0, 4) + p.name.substring(p.name.length() - 3);
+					else
+						p.name = name;
 				}
 				break;
 			}
