@@ -212,7 +212,7 @@ class Round {
 	}
 
 	public ArrayList<Player> byRank() {
-		ArrayList<Player> list = new ArrayList<Player>(byName.values());
+		ArrayList<Player> list = new ArrayList<Player>(byId.values());
 		Collections.sort(list, new Core.PlayerComparator(getDef().isHuntRace()));
 		return list;
 	}
@@ -641,6 +641,34 @@ class FallBallRankingMaker extends RankingMaker {
 	}
 }
 
+// 1vs1 のみ
+class OneOnOneRankingMaker extends RankingMaker {
+	@Override
+	public String toString() {
+		return "1vs1";
+	}
+
+	@Override
+	public String getDesc() {
+		return "Valley/Button のみの勝率。";
+	}
+
+	@Override
+	public boolean isEnable(Round r) {
+		// 1v1 stage only
+		return r.name.equals("FallGuy_1v1_Volleyfall") || r.name.equals("FallGuy_1v1_ButtonBasher");
+	}
+
+	@Override
+	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
+		stat.participationCount += 1; // 参加 round 数
+		if (p.qualified == Boolean.TRUE) {
+			stat.winCount += 1;
+			stat.totalScore += 1;
+		}
+	}
+}
+
 // thieves のみの、ガーディアン、シーフ別戦績集計
 class CandyRankingMaker extends RankingMaker {
 	@Override
@@ -859,7 +887,7 @@ class Core {
 				if (!rankingMaker.isEnable(r))
 					continue;
 				// このラウンドの参加者の結果を反映
-				for (Player p : r.byName.values()) {
+				for (Player p : r.byId.values()) {
 					PlayerStat stat = stats.get(p.name);
 					if (stat == null) {
 						stat = new PlayerStat(p.name, p.platform);
@@ -1175,6 +1203,7 @@ class FGReader extends TailerListenerAdapter {
 					if (r.myPlayerId == p.id)
 						Core.myName = p.name;
 				}
+				r.add(p);
 				break;
 			}
 			if (line.contains("[StateGameLoading] Starting the game.")) {
@@ -1420,7 +1449,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			String name = e.getKey();
 			if (name == null)
 				continue;
-			if (!name.matches("...\\.\\.\\....")) {
+			if (!name.contains("...")) {
 				String newName = name.replaceFirst("(.{3}).+(.{3})", "$1...$2");
 				Core.playerStyles.put(newName, e.getValue());
 			}
@@ -1444,7 +1473,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	JTextPane rankingArea;
 	JComboBox<String> rankingSortSel;
 	JComboBox<Integer> rankingFilterSel;
-	JComboBox<String> playerSel;
+	JComboBox<Player> playerSel;
 	JComboBox<String> playerStyleSel;
 	JTextField playerMemo;
 	JLabel rankingDescLabel;
@@ -1552,6 +1581,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingMakerSel.addItem(new FeedFirstRankingMaker());
 		rankingMakerSel.addItem(new SquadsRankingMaker());
 		rankingMakerSel.addItem(new FallBallRankingMaker());
+		rankingMakerSel.addItem(new OneOnOneRankingMaker());
 		rankingMakerSel.addItem(new CandyRankingMaker());
 		rankingMakerSel.addItem(new SnipeRankingMaker());
 		rankingMakerSel.addItemListener(ev -> {
@@ -1643,7 +1673,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
 		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
 
-		playerSel = new JComboBox<String>();
+		playerSel = new JComboBox<Player>();
 		playerSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, playerSel, COL2_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.SOUTH, playerSel, -10, SpringLayout.NORTH, rankingMakerSel);
@@ -1652,13 +1682,12 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		playerSel.addItemListener(new ItemListener() {
 			@Override
 			public void itemStateChanged(ItemEvent e) {
-				String player = (String) playerSel.getSelectedItem();
+				Player player = (Player) playerSel.getSelectedItem();
 				if (player == null)
 					return;
-				player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
-				playerMemo.setText(Core.playerMemos.get(player));
+				playerMemo.setText(Core.playerMemos.get(player.name));
 				String before = (String) playerStyleSel.getSelectedItem();
-				String after = Core.playerStyles.get(player);
+				String after = Core.playerStyles.get(player.name);
 				if ((before == null && after == null) || (before != null && before.equals(after)))
 					return;
 				ignoreSelEvent = true;
@@ -1688,13 +1717,12 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 					ignoreSelEvent = false;
 					return;
 				}
-				String player = (String) playerSel.getSelectedItem();
-				player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
+				Player player = (Player) playerSel.getSelectedItem();
 				String style = (String) playerStyleSel.getSelectedItem();
 				if (style == null || style.length() == 0)
-					Core.playerStyles.remove(player);
+					Core.playerStyles.remove(player.name);
 				else
-					Core.playerStyles.put(player, style);
+					Core.playerStyles.put(player.name, style);
 				refreshRoundDetail(getSelectedRound());
 				displayRanking();
 			}
@@ -1709,13 +1737,12 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		playerMemo.addFocusListener(new FocusAdapter() {
 			@Override
 			public void focusLost(FocusEvent e) {
-				String player = (String) playerSel.getSelectedItem();
-				player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
+				Player player = (Player) playerSel.getSelectedItem();
 				String memo = playerMemo.getText();
 				if (memo == null || memo.length() == 0)
-					Core.playerMemos.remove(player);
+					Core.playerMemos.remove(player.name);
 				else
-					Core.playerMemos.put(player, memo);
+					Core.playerMemos.put(player.name, memo);
 				refreshRoundDetail(getSelectedRound());
 				displayRanking();
 			}
@@ -1970,29 +1997,27 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		if (r == null)
 			return;
 		synchronized (Core.listLock) {
-			for (Player player : r.byName.values()) {
-				FallGuysRecord.frame.playerSel.addItem(player.toString());
+			for (Player player : r.byId.values()) {
+				FallGuysRecord.frame.playerSel.addItem(player);
 			}
 		}
 		//playerSel.setSelectedItem(Core.myName);
 	}
 
 	private void removePlayerOnCurrentRound() {
-		String player = (String) playerSel.getSelectedItem();
-		player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
+		Player player = (Player) playerSel.getSelectedItem();
 		Round r = getSelectedRound();
-		r.remove(player);
+		r.remove(player.name);
 		Core.updateStats();
 		roundSelected(r);
 		displayRanking();
 	}
 
 	private void removePlayerOnCurrentMatch() {
-		String player = (String) playerSel.getSelectedItem();
-		player = player.replaceFirst("(\\[.+\\])?(.+)\\(.+\\)", "$2");
+		Player player = (Player) playerSel.getSelectedItem();
 		Match m = getSelectedMatch();
 		for (Round r : m == null ? Core.rounds : m.rounds)
-			r.remove(player);
+			r.remove(player.name);
 		Core.updateStats();
 		roundSelected(getSelectedRound());
 		displayRanking();
