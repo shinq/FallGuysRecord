@@ -258,8 +258,10 @@ class Round {
 			// 非ファイナルラウンドがファイナルとして出現した場合の検査
 			if (roundName2.contains("_non_final"))
 				return false;
-			if (roundName2.contains("_final"))
+			if (roundName2.endsWith("_final"))
 				return true;
+			if (roundName2.contains("only_finals"))
+				return false;
 			if (roundName2.contains("round_robotrampage_arena_2_ss2_show1_03"))
 				return true;
 			if (byId.size() > 8 && roundName2.contains("_survival"))
