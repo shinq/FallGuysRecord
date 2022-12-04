@@ -17,8 +17,11 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.InetAddress;
@@ -34,6 +37,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -837,9 +841,44 @@ class Core {
 	public static Map<String, Map<String, String>> servers = new HashMap<String, Map<String, String>>();
 
 	public static void load() {
+		//Core.playerStyles.clear();
+		//Core.playerMemos.clear();
+		try (BufferedReader in = new BufferedReader(
+				new InputStreamReader(new FileInputStream("players.tsv"), "UTF-8"))) {
+			String line;
+			while ((line = in.readLine()) != null) {
+				String[] d = line.split("\t");
+				if (d.length > 1 && !"".equals(d[1]) && !"null".equals(d[1]))
+					Core.playerStyles.put(d[0], d[1]);
+				if (d.length > 2 && !"".equals(d[2]) && !"null".equals(d[2]))
+					Core.playerMemos.put(d[0], d[2]);
+			}
+		} catch (IOException ex) {
+		}
 	}
 
 	public static void save() {
+		try (PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream("players.tsv"), "UTF-8"),
+				false)) {
+			Core.playerStyles.remove(null);
+			Core.playerMemos.remove(null);
+			List<String> names = new ArrayList<String>();
+			names.addAll(Core.playerStyles.keySet());
+			names.addAll(Core.playerMemos.keySet());
+			Collections.sort(names);
+			for (String name : new LinkedHashSet<String>(names)) {
+				out.print(name);
+				out.print("\t");
+				String style = Core.playerStyles.get(name);
+				out.print(style == null ? "" : style);
+				out.print("\t");
+				String memo = Core.playerMemos.get(name);
+				out.print(memo == null ? "" : memo);
+				out.println();
+			}
+		} catch (IOException ex) {
+			ex.printStackTrace();
+		}
 	}
 
 	public static void addMatch(Match m) {
@@ -1039,8 +1078,7 @@ class FGReader extends TailerListenerAdapter {
 			"\\[ClientGameManager\\] Handling bootstrap for [^ ]+ player FallGuy \\[(\\d+)\\].+, playerID = (\\d+)");
 	static Pattern patternPlayerSpawn = Pattern.compile(
 			"\\[CameraDirector\\] Adding Spectator target (.+) \\((.+)\\) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
-	static Pattern patternPlayerSpawnFinish = Pattern.compile(
-			"\\[ClientGameManager\\] Finalising spawn for player FallGuy \\[(\\d+)\\] (.+) \\((.+)\\) ");
+	//static Pattern patternPlayerSpawnFinish = Pattern.compile("\\[ClientGameManager\\] Finalising spawn for player FallGuy \\[(\\d+)\\] (.+) \\((.+)\\) ");
 
 	static Pattern patternScoreUpdated = Pattern.compile("Player (\\d+) score = (\\d+)");
 	static Pattern patternPlayerResult = Pattern.compile(
@@ -1065,6 +1103,7 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	private void parseLine(String line) {
+		Round r = Core.getCurrentRound();
 		if (line.contains("[UserInfo] Player Name:")) {
 			String[] sp = line.split("Player Name: ", 2);
 			Core.myNameFull = sp[1];
@@ -1114,7 +1153,6 @@ class FGReader extends TailerListenerAdapter {
 		}
 		m = patternLocalPlayerId.matcher(line);
 		if (m.find()) {
-			Round r = Core.getCurrentRound();
 			r.myPlayerId = Integer.parseUnsignedInt(m.group(2));
 		}
 		switch (readState) {
@@ -1136,13 +1174,14 @@ class FGReader extends TailerListenerAdapter {
 				String roundName = m.group(1);
 				long frame = Long.parseUnsignedLong(m.group(2)); // FIXME: round id のほうが適切
 				Core.addRound(new Round(roundName, frame, isFinal, Core.getCurrentMatch()));
+				r = Core.getCurrentRound();
 				System.out.println("DETECT STARTING " + roundName + " frame=" + frame);
 				//readState = ReadState.MEMBER_DETECTING;
 			}
 			m = patternLoadedRound.matcher(line);
 			if (m.find()) {
 				String roundName2 = m.group(1);
-				Core.getCurrentRound().roundName2 = roundName2;
+				r.roundName2 = roundName2;
 				System.out.println("DETECT STARTING " + roundName2);
 				readState = ReadState.MEMBER_DETECTING;
 			}
@@ -1153,10 +1192,10 @@ class FGReader extends TailerListenerAdapter {
 			if (m.find()) {
 				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
 				int playerId = Integer.parseUnsignedInt(m.group(2));
-				Player p = Core.getCurrentRound().byId.get(playerId);
+				Player p = r.byId.get(playerId);
 				if (p == null) {
 					p = new Player(playerId);
-					Core.getCurrentRound().add(p);
+					r.add(p);
 				}
 				p.objectId = playerObjectId;
 				// System.out.println("playerId=" + playerId + " objectId=" + playerObjectId);
@@ -1169,9 +1208,10 @@ class FGReader extends TailerListenerAdapter {
 				int partyId = m.group(3).length() == 0 ? 0 : Integer.parseUnsignedInt(m.group(3)); // 空文字列のことあり
 				int squadId = Integer.parseUnsignedInt(m.group(4));
 				int playerId = Integer.parseUnsignedInt(m.group(5));
+				// win...xxx のような末尾３文字だけになった
 				String playerName = name;
 
-				Player p = Core.getCurrentRound().byId.get(playerId);
+				Player p = r.byId.get(playerId);
 				if (p == null) {
 					p = new Player(playerId);
 				}
@@ -1179,21 +1219,23 @@ class FGReader extends TailerListenerAdapter {
 				p.squadId = squadId;
 				p.name = playerName;
 				p.platform = platform;
-				Core.getCurrentRound().add(p);
+				r.add(p);
+				if (r.myPlayerId == p.id)
+					Core.myName = p.name;
 
-				System.out.println(Core.getCurrentRound().byId.size() + " Player " + playerName + " (id=" + playerId
+				System.out.println(r.byId.size() + " Player " + playerName + " (id=" + playerId
 						+ " squadId=" + squadId + ") spwaned.");
 				listener.roundUpdated();
 				// 現在の自分の objectId 更新
 				// if (Core.myName.equals(p.name))
-				if (Core.getCurrentRound().myPlayerId == p.id)
+				if (r.myPlayerId == p.id)
 					myObjectId = p.objectId;
 				break;
 			}
 			// こちらで取れる名前は旧名称だった…
+			/* この行での名前出力がなくなっていた
 			m = patternPlayerSpawnFinish.matcher(line);
 			if (m.find()) {
-				Round r = Core.getCurrentRound();
 				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
 				String name = m.group(2);
 				Player p = r.getByObjectId(playerObjectId);
@@ -1208,16 +1250,17 @@ class FGReader extends TailerListenerAdapter {
 				r.add(p);
 				break;
 			}
+			*/
 			if (line.contains("[StateGameLoading] Starting the game.")) {
 				listener.roundStarted();
 			}
 			if (line.contains("[GameSession] Changing state from Countdown to Playing")) {
-				Core.getCurrentRound().start = getTime(line);
+				r.start = getTime(line);
 				topObjectId = 0;
 				listener.roundStarted();
 				qualifiedCount = eliminatedCount = 0; // reset
 				readState = ReadState.RESULT_DETECTING;
-				if (Core.getCurrentRound().getDef().type == RoundType.SURVIVAL) {
+				if (r.getDef().type == RoundType.SURVIVAL) {
 					survivalScoreTimer = new Timer();
 					survivalScoreTimer.scheduleAtFixedRate(new TimerTask() {
 						@Override
@@ -1246,7 +1289,7 @@ class FGReader extends TailerListenerAdapter {
 			if (m.find()) {
 				int playerObjectId = Integer.parseUnsignedInt(m.group(1));
 				int score = Integer.parseUnsignedInt(m.group(2));
-				Player player = Core.getCurrentRound().getByObjectId(playerObjectId);
+				Player player = r.getByObjectId(playerObjectId);
 				if (player != null) {
 					if (player.score != score) {
 						System.out.println(player + " score " + player.score + " -> " + score);
@@ -1258,7 +1301,6 @@ class FGReader extends TailerListenerAdapter {
 			}
 			// finish time handling
 			if (line.contains("[ClientGameManager] Handling unspawn for player FallGuy ")) {
-				Round r = Core.getCurrentRound();
 				if (topObjectId == 0) {
 					topObjectId = Integer
 							.parseInt(line.replaceFirst(".+Handling unspawn for player FallGuy \\[(\\d+)\\].*", "$1"));
@@ -1274,7 +1316,6 @@ class FGReader extends TailerListenerAdapter {
 			if (m.find()) {
 				int playerId = Integer.parseUnsignedInt(m.group(1));
 				boolean succeeded = "True".equals(m.group(2));
-				Round r = Core.getCurrentRound();
 				Player player = r.byId.get(playerId);
 				if (!succeeded)
 					System.out.print("Eliminated for " + playerId + " ");
@@ -1327,7 +1368,7 @@ class FGReader extends TailerListenerAdapter {
 				int playerId = Integer.parseUnsignedInt(m.group(1));
 				int finalScore = Integer.parseUnsignedInt(m.group(2));
 				boolean isFinal = "True".equals(m.group(3));
-				Player player = Core.getCurrentRound().byId.get(playerId);
+				Player player = r.byId.get(playerId);
 				System.out.println(
 						"Result for " + playerId + " score=" + finalScore + " isFinal=" + isFinal + " " + player);
 				if (player != null) {
@@ -1341,7 +1382,7 @@ class FGReader extends TailerListenerAdapter {
 			//if (text.contains("[ClientGameManager] Server notifying that the round is over.")
 			if (line.contains(
 					"[GameSession] Changing state from Playing to GameOver")) {
-				Core.getCurrentRound().end = getTime(line);
+				r.end = getTime(line);
 				if (survivalScoreTimer != null) {
 					survivalScoreTimer.cancel();
 					survivalScoreTimer.purge();
@@ -1353,14 +1394,14 @@ class FGReader extends TailerListenerAdapter {
 					|| line.contains(
 							"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen")) {
 				System.out.println("DETECT END GAME");
-				Core.getCurrentRound().fixed = true;
+				r.fixed = true;
 				Core.getCurrentMatch().end = getTime(line);
 				// 優勝画面に行ったらそのラウンドをファイナル扱いとする
 				// final マークがつかないファイナルや、通常ステージで一人生き残り優勝のケースを補填するためだが
 				// 通常ステージでゲーム終了時それをファイナルステージとみなすべきかはスコアリング上微妙ではある。
 				if (line.contains(
 						"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen"))
-					Core.getCurrentRound().isFinal = true;
+					r.isFinal = true;
 				Core.updateStats();
 				listener.roundDone();
 				readState = ReadState.ROUND_DETECTING;
@@ -1446,6 +1487,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			Core.playerMemos = (Map<String, String>) in.readObject();
 		} catch (IOException ex) {
 		}
+		/*
 		List<Map.Entry<String, String>> list = new ArrayList<Map.Entry<String, String>>(Core.playerStyles.entrySet());
 		for (Map.Entry<String, String> e : list) {
 			String name = e.getKey();
@@ -1456,6 +1498,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				Core.playerStyles.put(newName, e.getValue());
 			}
 		}
+		*/
 
 		Core.load();
 
@@ -1772,9 +1815,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				reader.stop();
 				try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream("state.dat"))) {
 					out.writeObject(frame.getBounds());
-					out.writeObject(Core.playerStyles);
+					out.writeObject(new HashMap<String, String>()); // これまで playerStyles を保存していたところ
 					out.writeObject(Core.servers);
-					out.writeObject(Core.playerMemos);
 				} catch (IOException ex) {
 					ex.printStackTrace();
 				}
@@ -2032,8 +2074,10 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingArea.setCaretPosition(0);
 		PlayerStat own = Core.getMyStat();
 		if (own != null)
-			myStatLabel
-					.setText("自分の戦績: " + own.winCount + " / " + own.participationCount + " (" + own.getRate() + "%)");
+			myStatLabel.setText(
+					"自分の戦績: " + own.winCount + " / " + own.participationCount + " (" + own.getRate() + "%)");
+		else
+			myStatLabel.setText("");
 	}
 
 	static final SimpleDateFormat f = new SimpleDateFormat("HH:mm:ss", Locale.JAPAN);
