@@ -1209,7 +1209,7 @@ class FGReader extends TailerListenerAdapter {
 				int squadId = Integer.parseUnsignedInt(m.group(4));
 				int playerId = Integer.parseUnsignedInt(m.group(5));
 				// win...xxx のような末尾３文字だけになった
-				String playerName = name;
+				String playerName = platform + name;
 
 				Player p = r.byId.get(playerId);
 				if (p == null) {
@@ -1217,11 +1217,13 @@ class FGReader extends TailerListenerAdapter {
 				}
 				p.partyId = partyId;
 				p.squadId = squadId;
-				p.name = playerName;
+				p.name = playerName + p.id;
 				p.platform = platform;
 				r.add(p);
-				if (r.myPlayerId == p.id)
+				if (r.myPlayerId == p.id) {
+					p.name = "YOU";
 					Core.myName = p.name;
+				}
 
 				System.out.println(r.byId.size() + " Player " + playerName + " (id=" + playerId
 						+ " squadId=" + squadId + ") spwaned.");
@@ -1939,6 +1941,13 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				t += 24 * 60 * 60 * 1000;
 			appendToRoundDetail("OWN: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000) + " #" + r.byId.get(r.myPlayerId).ranking, "bold");
+		}
+		if (r.end != null) {
+			long t = r.end.getTime() - r.start.getTime();
+			if (t < 0)
+				t += 24 * 60 * 60 * 1000;
+			appendToRoundDetail("END: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
+					+ "." + String.format("%03d", t % 1000), "bold");
 		}
 		if (r.isFinal()) {
 			appendToRoundDetail("********** FINAL **********", "bold");
