@@ -27,7 +27,7 @@ import java.math.RoundingMode;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.URL;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -41,7 +41,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.MissingResourceException;
 import java.util.Properties;
+import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.Timer;
@@ -335,136 +337,141 @@ enum RoundType {
 
 class RoundDef {
 
-	public final String dispName;
-	public final String dispNameJa;
+	public final String key;
 	public final RoundType type;
 	public final boolean isFinalNormally; // 通常はファイナルとして出現
 
-	public RoundDef(String name, String nameJa, RoundType type) {
-		this(name, nameJa, type, false);
+	public RoundDef(String key, RoundType type) {
+		this(key, type, false);
 	}
 
-	public RoundDef(String name, String nameJa, RoundType type, boolean isFinal) {
-		dispName = name;
-		dispNameJa = nameJa;
+	public RoundDef(String key, RoundType type, boolean isFinal) {
+		this.key = key;
 		this.type = type;
 		this.isFinalNormally = isFinal;
+	}
+
+	public String getName() {
+		try {
+			String name = Core.RES.getString(key);
+			if (name == null)
+				return key;
+			return name;
+		} catch (MissingResourceException w) {
+			return key;
+		}
 	}
 
 	public boolean isHuntRace() {
 		return type == RoundType.HUNT_RACE;
 	}
 
+	static void add(RoundDef def) {
+		roundNames.put(def.key, def);
+	}
+
 	static Map<String, RoundDef> roundNames = new HashMap<String, RoundDef>();
 	static {
-		roundNames.put("FallGuy_DoorDash", new RoundDef("Door Dash", "ドアダッシュ", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_03", new RoundDef("Whirlygig", "グルグルファイト", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_02_01", new RoundDef("Dizzy Heights", "スピンレース", RoundType.RACE));
-		roundNames.put("FallGuy_ChompChomp_01", new RoundDef("Gate Crash", "ゲートクラッシュ", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_01", new RoundDef("Hit Parade", "ヒットパレード", RoundType.RACE));
-		roundNames.put("FallGuy_SeeSaw_variant2", new RoundDef("See Saw", "シーソーゲーム", RoundType.RACE));
-		roundNames.put("FallGuy_Lava_02", new RoundDef("Slime Climb", "スライムクライム", RoundType.RACE));
-		roundNames.put("FallGuy_DodgeFall", new RoundDef("Fruit Chute", "フルーツパニック", RoundType.RACE));
-		roundNames.put("FallGuy_TipToe", new RoundDef("Tip Toe", "ヒヤヒヤロード", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_04", new RoundDef("Knight Fever", "ナイト・フィーバー", RoundType.RACE));
-		roundNames.put("FallGuy_WallGuys", new RoundDef("Wall Guys", "ウォールガイズ", RoundType.RACE));
-		roundNames.put("FallGuy_BiggestFan", new RoundDef("Big Fans", "ビッグファン", RoundType.RACE));
-		roundNames.put("FallGuy_IceClimb_01", new RoundDef("Freezy Peak", "ブルブル登山", RoundType.RACE));
-		roundNames.put("FallGuy_Tunnel_Race_01", new RoundDef("Roll On", "ロールオン", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_06", new RoundDef("Skyline Stumble", "スカイラインスタンブル", RoundType.RACE));
-		roundNames.put("FallGuy_ShortCircuit", new RoundDef("Short Circuit", "ショート・サーキット", RoundType.RACE));
-		roundNames.put("FallGuy_HoverboardSurvival", new RoundDef("Hoverboard Heroes", "ホバーボード・ヒーローズ", RoundType.RACE));
-		roundNames.put("FallGuy_SlimeClimb_2", new RoundDef("Slimescraper", "スライムスクレイパー", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_07", new RoundDef("Treetop Tumble", "ツリートップタンブル", RoundType.RACE));
-		roundNames.put("FallGuy_DrumTop", new RoundDef("Lily Leapers", "リリー・リーパー", RoundType.RACE));
-		roundNames.put("FallGuy_SeeSaw360", new RoundDef("Full Tilt", "フルティルト", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_08", new RoundDef("Party Promenade", "パーティープロムナード", RoundType.RACE));
-		roundNames.put("FallGuy_PipedUp", new RoundDef("Pipe Dream", "パイプドリーム", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_05", new RoundDef("Tundra Run", "ツンドラダッシュ", RoundType.RACE));
+		add(new RoundDef("FallGuy_DoorDash", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_03", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_02_01", RoundType.RACE));
+		add(new RoundDef("FallGuy_ChompChomp_01", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_01", RoundType.RACE));
+		add(new RoundDef("FallGuy_SeeSaw_variant2", RoundType.RACE));
+		add(new RoundDef("FallGuy_Lava_02", RoundType.RACE));
+		add(new RoundDef("FallGuy_DodgeFall", RoundType.RACE));
+		add(new RoundDef("FallGuy_TipToe", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_04", RoundType.RACE));
+		add(new RoundDef("FallGuy_WallGuys", RoundType.RACE));
+		add(new RoundDef("FallGuy_BiggestFan", RoundType.RACE));
+		add(new RoundDef("FallGuy_IceClimb_01", RoundType.RACE));
+		add(new RoundDef("FallGuy_Tunnel_Race_01", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_06", RoundType.RACE));
+		add(new RoundDef("FallGuy_ShortCircuit", RoundType.RACE));
+		add(new RoundDef("FallGuy_HoverboardSurvival", RoundType.RACE));
+		add(new RoundDef("FallGuy_SlimeClimb_2", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_07", RoundType.RACE));
+		add(new RoundDef("FallGuy_DrumTop", RoundType.RACE));
+		add(new RoundDef("FallGuy_SeeSaw360", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_08", RoundType.RACE));
+		add(new RoundDef("FallGuy_PipedUp", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_05", RoundType.RACE));
 
-		roundNames.put("FallGuy_TailTag_2", new RoundDef("Tail Tag", "しっぽオニ", RoundType.TEAM));
-		roundNames.put("FallGuy_1v1_ButtonBasher", new RoundDef("Button Bashers", "ボタンバッシャーズ", RoundType.HUNT_SURVIVE));
-		roundNames.put("FallGuy_Hoops_Blockade", new RoundDef("Hoopsie Legends", "フープループレジェンド", RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_SkeeFall", new RoundDef("Ski Fall", "スキーフォール", RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_Penguin_Solos", new RoundDef("Pegwin Party", "ペンギンプールパーティー", RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_KingOfTheHill2", new RoundDef("Bubble Trouble", "バブルトラブル", RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_Airtime", new RoundDef("Airtime", "エアータイム", RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_FollowTheLeader", new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_FollowTheLeader_UNPACKED",
-				new RoundDef("Leading Light", "動く スポットライト", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_TailTag_2", RoundType.TEAM));
+		add(new RoundDef("FallGuy_1v1_ButtonBasher", RoundType.HUNT_SURVIVE));
+		add(new RoundDef("FallGuy_Hoops_Blockade", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_SkeeFall", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_Penguin_Solos", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_KingOfTheHill2", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_Airtime", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_FollowTheLeader", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_FollowTheLeader_UNPACKED", RoundType.HUNT_RACE));
 
-		roundNames.put("FallGuy_Block_Party", new RoundDef("Block Party", "ブロックパーティー", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_JumpClub_01", new RoundDef("Jump Club", "ジャンプクラブ", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_MatchFall", new RoundDef("Perfect Match", "パーフェクトマッチ", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_Tunnel_01", new RoundDef("Roll Out", "ロールアウト", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_SnowballSurvival", new RoundDef("Snowball Survival", "雪玉サバイバル", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_FruitPunch", new RoundDef("Big Shots", "ビッグショット", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_RobotRampage_Arena2",
-				new RoundDef("Stompin' Ground", "ストンピングラウンド", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_FruitBowl", new RoundDef("Sum Fruit", "カウントフルーツ", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_Block_Party", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_JumpClub_01", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_MatchFall", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_Tunnel_01", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_SnowballSurvival", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_FruitPunch", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_RobotRampage_Arena2", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_FruitBowl", RoundType.SURVIVAL));
 
-		roundNames.put("FallGuy_ConveyorArena_01", new RoundDef("Team Tail Tag", "チームしっぽオニ", RoundType.TEAM));
-		roundNames.put("FallGuy_TeamInfected", new RoundDef("Jinxed", "バッドラック", RoundType.TEAM));
-		roundNames.put("FallGuy_FallBall_5", new RoundDef("Fall Ball", "フォールボール", RoundType.TEAM));
-		roundNames.put("FallGuy_BallHogs_01", new RoundDef("Hoarders", "ためこみ合戦", RoundType.TEAM));
-		roundNames.put("FallGuy_RocknRoll", new RoundDef("Rock'N'Roll", "ロックンロール", RoundType.TEAM));
-		roundNames.put("FallGuy_Hoops_01", new RoundDef("Hoopsie Daisy", "フープ・ループ・ゴール", RoundType.TEAM));
-		roundNames.put("FallGuy_EggGrab", new RoundDef("Egg Scramble", "エッグ・スクランブル", RoundType.TEAM));
-		roundNames.put("FallGuy_EggGrab_02", new RoundDef("Egg Siege", "エッグ・キャッスル", RoundType.TEAM));
-		roundNames.put("FallGuy_Snowy_Scrap", new RoundDef("Snowy Scrap", "スノースクラップ", RoundType.TEAM));
-		roundNames.put("FallGuy_ChickenChase_01", new RoundDef("Pegwin Pursuit", "ペンギンチェイス", RoundType.TEAM));
-		roundNames.put("FallGuy_Basketfall_01", new RoundDef("Basketfall", "バスケットフォール", RoundType.TEAM));
-		roundNames.put("FallGuy_TerritoryControl_v2", new RoundDef("Power Trip", "パワートリップ", RoundType.TEAM));
+		add(new RoundDef("FallGuy_ConveyorArena_01", RoundType.TEAM));
+		add(new RoundDef("FallGuy_TeamInfected", RoundType.TEAM));
+		add(new RoundDef("FallGuy_FallBall_5", RoundType.TEAM));
+		add(new RoundDef("FallGuy_BallHogs_01", RoundType.TEAM));
+		add(new RoundDef("FallGuy_RocknRoll", RoundType.TEAM));
+		add(new RoundDef("FallGuy_Hoops_01", RoundType.TEAM));
+		add(new RoundDef("FallGuy_EggGrab", RoundType.TEAM));
+		add(new RoundDef("FallGuy_EggGrab_02", RoundType.TEAM));
+		add(new RoundDef("FallGuy_Snowy_Scrap", RoundType.TEAM));
+		add(new RoundDef("FallGuy_ChickenChase_01", RoundType.TEAM));
+		add(new RoundDef("FallGuy_Basketfall_01", RoundType.TEAM));
+		add(new RoundDef("FallGuy_TerritoryControl_v2", RoundType.TEAM));
 
-		roundNames.put("FallGuy_Invisibeans", new RoundDef("Sweet Thieves", "キャンディードロボー", RoundType.TEAM));
-		roundNames.put("FallGuy_PumpkinPie", new RoundDef("Treet Thieves", "お菓子ドロボー", RoundType.TEAM));
+		add(new RoundDef("FallGuy_Invisibeans", RoundType.TEAM));
+		add(new RoundDef("FallGuy_PumpkinPie", RoundType.TEAM));
 
-		roundNames.put("FallGuy_FallMountain_Hub_Complete",
-				new RoundDef("Fall Mountain", "フォールマウンテン", RoundType.RACE, true));
-		roundNames.put("FallGuy_FloorFall", new RoundDef("Hex-A-Gone", "とまるなキケン", RoundType.SURVIVAL, true));
-		roundNames.put("FallGuy_JumpShowdown_01",
-				new RoundDef("Jump Showdown", "ジャンプ・ショーダウン", RoundType.SURVIVAL, true));
-		roundNames.put("FallGuy_Crown_Maze_Topdown", new RoundDef("Lost Temple", "ロストテンプル", RoundType.RACE, true));
-		roundNames.put("FallGuy_Tunnel_Final", new RoundDef("Roll Off", "ロールオフ", RoundType.SURVIVAL, true));
-		roundNames.put("FallGuy_Arena_01", new RoundDef("Royal Fumble", "ロイヤルファンブル", RoundType.HUNT_SURVIVE, true));
-		roundNames.put("FallGuy_ThinIce", new RoundDef("Thin Ice", "パキパキアイス", RoundType.SURVIVAL, true));
+		add(new RoundDef("FallGuy_FallMountain_Hub_Complete", RoundType.RACE, true));
+		add(new RoundDef("FallGuy_FloorFall", RoundType.SURVIVAL, true));
+		add(new RoundDef("FallGuy_JumpShowdown_01", RoundType.SURVIVAL, true));
+		add(new RoundDef("FallGuy_Crown_Maze_Topdown", RoundType.RACE, true));
+		add(new RoundDef("FallGuy_Tunnel_Final", RoundType.SURVIVAL, true));
+		add(new RoundDef("FallGuy_Arena_01", RoundType.HUNT_SURVIVE, true));
+		add(new RoundDef("FallGuy_ThinIce", RoundType.SURVIVAL, true));
 
-		roundNames.put("FallGuy_Gauntlet_09", new RoundDef("TRACK ATTACK", "トラックアタック", RoundType.RACE));
-		roundNames.put("FallGuy_ShortCircuit2", new RoundDef("SPEED CIRCUIT", "スピードサーキット", RoundType.RACE));
-		roundNames.put("FallGuy_SpinRing", new RoundDef("THE SWIVELLER", "リングスピナー", RoundType.SURVIVAL));
-		roundNames.put("FallGuy_HoopsRevenge", new RoundDef("BOUNCE PARTY", "バウンスパーティー", RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_1v1_Volleyfall", new RoundDef("VOLLEYFALL", "バレーフォール", RoundType.HUNT_SURVIVE));
-		roundNames.put("FallGuy_HexARing", new RoundDef("HEX-A-RING", "リングのノロイ", RoundType.SURVIVAL, true));
-		roundNames.put("FallGuy_BlastBall_ArenaSurvival",
-				new RoundDef("BLAST BALL", "ブラストボール", RoundType.SURVIVAL, true));
+		add(new RoundDef("FallGuy_Gauntlet_09", RoundType.RACE));
+		add(new RoundDef("FallGuy_ShortCircuit2", RoundType.RACE));
+		add(new RoundDef("FallGuy_SpinRing", RoundType.SURVIVAL));
+		add(new RoundDef("FallGuy_HoopsRevenge", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_1v1_Volleyfall", RoundType.HUNT_SURVIVE));
+		add(new RoundDef("FallGuy_HexARing", RoundType.SURVIVAL, true));
+		add(new RoundDef("FallGuy_BlastBall_ArenaSurvival", RoundType.SURVIVAL, true));
 
-		roundNames.put("FallGuy_BlueJay_UNPACKED",
-				new RoundDef("BEAN HILL ZONE", "ジェリービーンズヒルゾーン", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_BlueJay_UNPACKED", RoundType.HUNT_RACE));
 
-		roundNames.put("FallGuy_SatelliteHoppers", new RoundDef("COSMIC HIGHWAY", "コズミックハイウェイ", RoundType.RACE));
-		roundNames.put("FallGuy_Gauntlet_10", new RoundDef("SPACE RACE", "スペースレース", RoundType.RACE));
-		roundNames.put("FallGuy_Starlink", new RoundDef("STARCHART", "星空マップ", RoundType.RACE));
-		roundNames.put("FallGuy_Hoverboard_Survival_2",
-				new RoundDef("HYPERDRIE HIROES", "ハイパードライブ・ヒーロー", RoundType.RACE));
-		roundNames.put("FallGuy_PixelPerfect", new RoundDef("PIXEL PAINTERS", "ピクセル名人", RoundType.HUNT_RACE));
-		roundNames.put("FallGuy_FFA_Button_Bashers",
-				new RoundDef("FRANTIC FACTORY", "ハチャメチャファクトリー", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_SatelliteHoppers", RoundType.RACE));
+		add(new RoundDef("FallGuy_Gauntlet_10", RoundType.RACE));
+		add(new RoundDef("FallGuy_Starlink", RoundType.RACE));
+		add(new RoundDef("FallGuy_Hoverboard_Survival_2", RoundType.RACE));
+		add(new RoundDef("FallGuy_PixelPerfect", RoundType.HUNT_RACE));
+		add(new RoundDef("FallGuy_FFA_Button_Bashers", RoundType.HUNT_RACE));
 
-		roundNames.put("FallGuy_Tip_Toe_Finale", new RoundDef("TIP TOE FINALE", "ヒヤヒヤロードファイナル", RoundType.RACE, true));
-		roundNames.put("FallGuy_HexSnake", new RoundDef("HEX-A-TERRESTRIAL", "止まるなキケンスペース", RoundType.SURVIVAL, true));
+		add(new RoundDef("FallGuy_Tip_Toe_Finale", RoundType.RACE, true));
+		add(new RoundDef("FallGuy_HexSnake", RoundType.SURVIVAL, true));
 		// round_tiptoefinale
 
-		roundNames.put("FallGuy_SlideChute", new RoundDef("SPEED SLIDER", "スピードスライダー", RoundType.RACE, false));
-		roundNames.put("FallGuy_FollowTheLine", new RoundDef("PUZZLE PATH", "パズルパス", RoundType.RACE, false));
-		roundNames.put("FallGuy_SlippySlide", new RoundDef("HOOP CHUTE", "リングシュート", RoundType.HUNT_RACE, false));
-		roundNames.put("FallGuy_BlastBallRuins", new RoundDef("BLASTLANTIS", "ブラストランティス", RoundType.SURVIVAL, false));
-		roundNames.put("FallGuy_Kraken_Attack", new RoundDef("KRAKEN SLAM", "クラーケンスラム", RoundType.SURVIVAL, true));
+		add(new RoundDef("FallGuy_SlideChute", RoundType.RACE, false));
+		add(new RoundDef("FallGuy_FollowTheLine", RoundType.RACE, false));
+		add(new RoundDef("FallGuy_SlippySlide", RoundType.HUNT_RACE, false));
+		add(new RoundDef("FallGuy_BlastBallRuins", RoundType.SURVIVAL, false));
+		add(new RoundDef("FallGuy_Kraken_Attack", RoundType.SURVIVAL, true));
 	}
 
 	public static RoundDef get(String name) {
 		RoundDef def = roundNames.get(name);
 		if (def == null)
-			return new RoundDef(name, name, RoundType.RACE); // unknown stage
+			return new RoundDef(name, RoundType.RACE); // unknown stage
 		return def;
 	}
 }
@@ -476,7 +483,7 @@ class RankingMaker {
 	}
 
 	public String getDesc() {
-		return "Final進出者のみ表示。決勝進出時、優勝時にポイント加算。";
+		return Core.RES.getString("finalWinDesc");
 	}
 
 	// 集計対象外のマッチであるかを判定する。参加マッチ数計測のためのもの。
@@ -561,7 +568,7 @@ class FeedFirstRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return "race/hunt １位時、決勝進出時、優勝時にポイント加算。";
+		return Core.RES.getString("raceHuntDesc");
 	}
 
 	@Override
@@ -593,7 +600,7 @@ class SquadsRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return "squads として優勝していれば優勝としてカウント。決勝進出時、優勝時にポイント加算。";
+		return Core.RES.getString("squadDesc");
 	}
 
 	@Override
@@ -628,7 +635,7 @@ class FallBallRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return "FallBall のみの勝率。";
+		return Core.RES.getString("fallBallDesc");
 	}
 
 	@Override
@@ -656,7 +663,7 @@ class OneOnOneRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return "Valley/Button のみの勝率。";
+		return Core.RES.getString("1vs1Desc");
 	}
 
 	@Override
@@ -684,7 +691,7 @@ class CandyRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return "Sweet Thieves 専用集計です。total は切断も込の値。thief/guard はそれぞれのチーム別の戦績で最後までやった試合のデータです。";
+		return Core.RES.getString("sweetThievesDesc");
 	}
 
 	@Override
@@ -778,7 +785,7 @@ class SnipeRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return "マッチにいた回数順表示です。１位は必然的に自分になります。分子は優勝回数になっています。";
+		return Core.RES.getString("snipesDesc");
 	}
 
 	@Override
@@ -791,11 +798,11 @@ class SnipeRankingMaker extends RankingMaker {
 }
 
 class Core {
-	static boolean LANG_EN = true;
 	static int PT_WIN = 10;
 	static int PT_FINALS = 10;
 	static int PT_1ST = 4;
-
+	static Locale LANG;
+	static ResourceBundle RES;
 	static Object listLock = new Object();
 
 	// utilities
@@ -844,7 +851,7 @@ class Core {
 		//Core.playerStyles.clear();
 		//Core.playerMemos.clear();
 		try (BufferedReader in = new BufferedReader(
-				new InputStreamReader(new FileInputStream("players.tsv"), "UTF-8"))) {
+				new InputStreamReader(new FileInputStream("players.tsv"), StandardCharsets.UTF_8))) {
 			String line;
 			while ((line = in.readLine()) != null) {
 				String[] d = line.split("\t");
@@ -858,7 +865,8 @@ class Core {
 	}
 
 	public static void save() {
-		try (PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream("players.tsv"), "UTF-8"),
+		try (PrintWriter out = new PrintWriter(
+				new OutputStreamWriter(new FileOutputStream("players.tsv"), StandardCharsets.UTF_8),
 				false)) {
 			Core.playerStyles.remove(null);
 			Core.playerMemos.remove(null);
@@ -1020,7 +1028,7 @@ class FGReader extends TailerListenerAdapter {
 	Listener listener;
 
 	public FGReader(File log, Listener listener) {
-		tailer = new Tailer(log, Charset.forName("UTF-8"), this, 400, false, false, 8192);
+		tailer = new Tailer(log, StandardCharsets.UTF_8, this, 400, false, false, 8192);
 		this.listener = listener;
 	}
 
@@ -1222,6 +1230,7 @@ class FGReader extends TailerListenerAdapter {
 				r.add(p);
 				if (r.myPlayerId == p.id) {
 					p.name = "YOU";
+					r.add(p);
 					Core.myName = p.name;
 				}
 
@@ -1463,7 +1472,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		}
 		// default values
 		String v = prop.getProperty("LANGUAGE");
-		Core.LANG_EN = v == null || "en".equals(v);
+		Core.LANG = v == null ? Locale.getDefault() : new Locale(v);
+		Core.RES = ResourceBundle.getBundle("res", Core.LANG);
+
 		v = prop.getProperty("POINT_1ST");
 		Core.PT_1ST = v == null ? 4 : Integer.parseInt(v, 10);
 		v = prop.getProperty("POINT_FINALS");
@@ -1534,7 +1545,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		Container p = getContentPane();
 		p.setLayout(l);
 
-		JLabel label = new JLabel("【総合ランキング】");
+		JLabel label = new JLabel(Core.RES.getString("rankingLabel"));
 		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
@@ -1547,9 +1558,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.WEST, rankingSortSel, 10, SpringLayout.EAST, label);
 		l.putConstraint(SpringLayout.NORTH, rankingSortSel, LINE1_Y, SpringLayout.NORTH, p);
 		rankingSortSel.setSize(95, 20);
-		rankingSortSel.addItem("スコア順");
-		rankingSortSel.addItem("勝利数順");
-		rankingSortSel.addItem("勝率順");
+		rankingSortSel.addItem(Core.RES.getString("scoreItem"));
+		rankingSortSel.addItem(Core.RES.getString("winItem"));
+		rankingSortSel.addItem(Core.RES.getString("percentageItem"));
 		rankingSortSel.addItemListener(ev -> {
 			displayRanking();
 		});
@@ -1572,7 +1583,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			displayRanking();
 		});
 		p.add(rankingFilterSel);
-		label = new JLabel("試合以上のみを表示");
+		label = new JLabel(Core.RES.getString("moreThanOneMatch"));
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, label, 4, SpringLayout.EAST, rankingFilterSel);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
@@ -1583,19 +1594,19 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		final int COL3_X = COL2_X + 130;
 		final int COL4_X = COL3_X + 160;
 
-		label = new JLabel("【マッチ一覧】");
+		label = new JLabel(Core.RES.getString("matchList"));
 		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL2_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(100, 20);
 		p.add(label);
-		label = new JLabel("【ラウンド一覧】");
+		label = new JLabel(Core.RES.getString("roundList"));
 		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL3_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(100, 20);
 		p.add(label);
-		label = new JLabel("【ラウンド詳細】");
+		label = new JLabel(Core.RES.getString("roundDetails"));
 		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
@@ -1795,16 +1806,16 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			}
 		});
 
-		JButton removeMemberFromRoundButton = new JButton("ラウンドから参加者を外す");
-		removeMemberFromRoundButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
+		JButton removeMemberFromRoundButton = new JButton(Core.RES.getString("removeMemberFromRoundButton"));
+		removeMemberFromRoundButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, removeMemberFromRoundButton, 10, SpringLayout.EAST, playerMemo);
 		l.putConstraint(SpringLayout.NORTH, removeMemberFromRoundButton, 0, SpringLayout.NORTH, playerSel);
 		removeMemberFromRoundButton.setPreferredSize(new Dimension(180, FONT_SIZE_BASE + 8));
 		removeMemberFromRoundButton.addActionListener(ev -> removePlayerOnCurrentRound());
 		p.add(removeMemberFromRoundButton);
 
-		JButton removeMemberFromMatchButton = new JButton("マッチから参加者を外す");
-		removeMemberFromMatchButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
+		JButton removeMemberFromMatchButton = new JButton(Core.RES.getString("removeMemberFromMatchButton"));
+		removeMemberFromMatchButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, removeMemberFromMatchButton, 10, SpringLayout.EAST,
 				removeMemberFromRoundButton);
 		l.putConstraint(SpringLayout.NORTH, removeMemberFromMatchButton, 0, SpringLayout.NORTH, playerSel);
@@ -1874,7 +1885,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			Match m = getSelectedMatch();
 			for (Round r : m == null ? Core.rounds : m.rounds) {
 				RoundDef def = RoundDef.get(r.name);
-				model.addElement(Core.LANG_EN ? def.dispName : def.dispNameJa);
+				model.addElement(def.getName());
 			}
 			roundsSel.setSelectedIndex(model.size() - 1);
 			roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
@@ -1888,7 +1899,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		synchronized (Core.listLock) {
 			for (Round r : m == null ? Core.rounds : m.rounds) {
 				RoundDef def = RoundDef.get(r.name);
-				model.addElement(Core.LANG_EN ? def.dispName : def.dispNameJa);
+				model.addElement(def.getName());
 			}
 		}
 		roundsSel.setSelectedIndex(model.size() - 1);
@@ -2083,8 +2094,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingArea.setCaretPosition(0);
 		PlayerStat own = Core.getMyStat();
 		if (own != null)
-			myStatLabel.setText(
-					"自分の戦績: " + own.winCount + " / " + own.participationCount + " (" + own.getRate() + "%)");
+			myStatLabel.setText(Core.RES.getString("myStatLabel") + own.winCount + " / " + own.participationCount + " ("
+					+ own.getRate() + "%)");
 		else
 			myStatLabel.setText("");
 	}

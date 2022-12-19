@@ -4,3 +4,5 @@ result.txt
 .classpath
 .project
 window_pt_size.ini
+state.dat
+players.tsv
