@@ -1,13 +1,11 @@
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics;
 import java.awt.Insets;
 import java.awt.Rectangle;
-import java.awt.event.FocusAdapter;
-import java.awt.event.FocusEvent;
-import java.awt.event.ItemEvent;
-import java.awt.event.ItemListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.BufferedReader;
@@ -17,6 +15,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -27,42 +26,55 @@ import java.math.RoundingMode;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Locale;
 import java.util.Map;
-import java.util.MissingResourceException;
 import java.util.Properties;
+import java.util.PropertyResourceBundle;
+import java.util.Random;
 import java.util.ResourceBundle;
+import java.util.ResourceBundle.Control;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-import javax.swing.DefaultListModel;
+import javax.swing.AbstractListModel;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JTextField;
 import javax.swing.JTextPane;
 import javax.swing.SpringLayout;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
+import javax.swing.border.BevelBorder;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultStyledDocument;
 import javax.swing.text.Style;
@@ -77,20 +89,19 @@ import org.apache.commons.io.input.TailerListenerAdapter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-//集計後のプレイヤーごと
+// 集計後のプレイヤーごと
+// もともと全プレイヤーの情報を収集できるデザインだったが、今は実質自分のみ。
 class PlayerStat {
-	String name; // for user identication
-	String platform;
-	Set<Match> matches = new HashSet<Match>(); // 参加match。
 	int totalScore;
-	int participationCount; // rate 分母。round または match 数。RankingMaker による。
-	int winCount; // rate 分子。優勝やクリアなど。RankingMaker による。
-	Map<String, String> additional = new HashMap<String, String>(); // 独自の統計を使う場合用領域
+	int participationCount; // rate 分母(今回log分)。round または match 数。RankingMaker による。
+	int winCount; // rate 分子(今回log分)。優勝やクリアなど。RankingMaker による。
+	int totalParticipationCount; // rate 分母。round または match 数。RankingMaker による。
+	int totalWinCount; // rate 分子。優勝やクリアなど。RankingMaker による。
+	int totalAchievementPoint;
+	int totalDailyPoint; // weekly 含む
+	int todayDailyPoint;
 
-	public PlayerStat(String name, String platform) {
-		this.name = name;
-		this.platform = platform;
-	}
+	Map<String, String> additional = new HashMap<String, String>(); // 独自の統計を使う場合用領域
 
 	public double getRate() {
 		return Core.calRate(winCount, participationCount);
@@ -105,9 +116,34 @@ class PlayerStat {
 		return 0;
 	}
 
-	public String toString() {
-		String memo = Core.playerMemos.get(name);
-		return (memo == null ? "" : "[" + memo + "]") + name;// + "(" + platform + ")";
+	public boolean setWin(Round r, boolean win, int score) {
+		if (win) {
+			if (r.match.isCurrentSession())
+				winCount += 1;
+			totalWinCount += 1;
+			totalScore += score;
+		} else {
+		}
+		return win;
+	}
+
+	public void reset() {
+		totalScore = totalParticipationCount = totalWinCount = participationCount = winCount = 0;
+	}
+
+	public int totalPoint() {
+		return totalAchievementPoint + totalDailyPoint + todayDailyPoint;
+	}
+
+	public String getTitle() {
+		int p = totalPoint();
+		int i = 0;
+		for (; i < Core.titledPoints.length; i += 1) {
+			if (p < Core.titledPoints[i]) {
+				return Core.titles[i];
+			}
+		}
+		return Core.titles[i];
 	}
 }
 
@@ -120,8 +156,10 @@ class Player {
 	int objectId; // object id of current round (for score log)
 	int squadId;
 	int partyId;
+	int teamId;
 	int ranking; // rank of current round
 
+	Date finish; // goal or eliminated time
 	Boolean qualified;
 	int score; // ラウンド中のスコアあるいは順位スコア
 	int finalScore = -1; // ラウンド終了後に出力されたスコア
@@ -130,9 +168,24 @@ class Player {
 		this.id = id;
 	}
 
+	// squad を考慮したクリア/脱落
+	boolean isQualified() {
+		if (squadId == 0)
+			return qualified == Boolean.TRUE;
+
+		// FIXME: パーティメンバー全員 qualified でも順位が規定以下なら eliminated になる辺りをどうするか。
+		// 次のラウンドにいるかどうかくらいでしか判定できない気がする…
+		// 決勝ならメンバーの誰かに優勝者がいれば優勝とみなす、でいいのだが…
+		// 今は決勝以外では正確な qualified を返せていない
+		for (Player member : round.getSquad(squadId).members) {
+			if (member.qualified == Boolean.TRUE)
+				return true;
+		}
+		return false;
+	}
+
 	public String toString() {
-		String memo = Core.playerMemos.get(name);
-		return (memo == null ? "" : "[" + memo + "]") + name + "(" + platform + ")";
+		return name + "(" + platform + ")";
 	}
 }
 
@@ -154,31 +207,38 @@ class Squad {
 				score += p.score;
 				// hunt-race の場合のみ順位スコア*10を加算して順位狂わないように調整
 				if (p.round.getDef().isHuntRace() && p.ranking > 0)
-					score += (p.round.getPlayerCount() - p.ranking) * 10;
+					score += (p.round.playerCount - p.ranking) * 10;
 			}
 		}
 		return score;
 	}
 }
 
-class Round {
-	Match match;
-	boolean fixed; // ステージ完了まで読み込み済み
+class Round implements Comparable<Round> {
+	final Match match;
+	final String name;
 	boolean isFinal;
-	String name;
 	String roundName2; // より詳細な内部名
-	long id; // 過去に読み込んだステージであるかの判定用。厳密ではないが frame 数なら衝突確率は低い。start 値で良いかも。
+	boolean fixed; // ステージ完了まで読み込み済み
+	int no; // 0 origin
 	Date start;
 	Date end;
 	Date topFinish;
-	Date myFinish;
+	//Date myFinish;
 	int myPlayerId;
+	int[] teamScore;
+	int playerCount;
+	int playerCountAdd;
+	boolean playerCountAddChanged;
+	boolean disableMe;
+	int qualifiedCount;
 	Map<String, Player> byName = new HashMap<String, Player>();
 	Map<Integer, Player> byId = new HashMap<Integer, Player>();
 
-	public Round(String name, long id, boolean isFinal, Match match) {
+	public Round(String name, int no, Date id, boolean isFinal, Match match) {
 		this.name = name;
-		this.id = id;
+		this.no = no;
+		start = id;
 		this.isFinal = isFinal;
 		this.match = match;
 	}
@@ -190,6 +250,8 @@ class Round {
 	public void add(Player p) {
 		p.round = this;
 		synchronized (Core.listLock) {
+			if (!byId.containsKey(p.id))
+				playerCount += 1;
 			byId.put(p.id, p);
 			if (p.name != null)
 				byName.put(p.name, p);
@@ -203,6 +265,7 @@ class Round {
 				return;
 			byName.remove(name);
 			byId.remove(p.id);
+			playerCount -= 1;
 		}
 	}
 
@@ -213,8 +276,53 @@ class Round {
 		return null;
 	}
 
-	public int getPlayerCount() {
-		return byId.size();
+	public boolean isSquad() {
+		if (match.isSquad())
+			return true;
+		return byId.size() > 0 && byId.values().iterator().next().squadId != 0;
+	}
+
+	public int getTeamScore(int teamId) {
+		if (teamScore == null || teamScore.length <= teamId)
+			return 0;
+		return teamScore[teamId];
+	}
+
+	public boolean isEnabled() {
+		Player p = getMe();
+		return p != null && !disableMe;
+	}
+
+	public boolean isDate(int dayKey) {
+		return dayKey == Core.toDayKey(start);
+	}
+
+	public int getSubstancePlayerCount() {
+		return playerCount + playerCountAdd;
+	}
+
+	public int getSubstanceQualifiedCount() {
+		return qualifiedCount * 2 > playerCount ? qualifiedCount + playerCountAdd : qualifiedCount;
+	}
+
+	// 自分がクリアしたかどうか
+	public Player getMe() {
+		return byName.get("YOU");
+	}
+
+	public boolean isQualified() {
+		Player p = getMe();
+		return p != null && p.qualified == Boolean.TRUE;
+	}
+
+	// myFinish や end を渡して ms 取得
+	public long getTime(Date o) {
+		if (start == null)
+			return 0;
+		long t = o.getTime() - start.getTime();
+		if (t < 0)
+			t += 24 * 60 * 60 * 1000;
+		return t;
 	}
 
 	public ArrayList<Player> byRank() {
@@ -310,24 +418,144 @@ class Round {
 			return true;
 		return false;
 	}
+
+	@Override
+	public int hashCode() {
+		return start.hashCode();
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		Round o = (Round) obj;
+		return start.equals(o.start);
+	}
+
+	@Override
+	public int compareTo(Round o) {
+		return start.compareTo(o.start);
+	}
+
+	public String toOverviewString() {
+		Player p = getMe();
+		StringBuilder buf = new StringBuilder();
+		if (start == null)
+			return getDef().getName();
+		buf.append(Core.datef.format(start));
+		if (p != null) {
+			buf.append(" ").append(p.isQualified() ? "○" : "☓");
+			if (p.isQualified())
+				buf.append(Core.pad(getSubstanceQualifiedCount())).append("vs")
+						.append(Core.pad(getSubstancePlayerCount() - getSubstanceQualifiedCount()));
+			else
+				buf.append(Core.pad(getSubstancePlayerCount() - getSubstanceQualifiedCount())).append("vs")
+						.append(Core.pad(getSubstanceQualifiedCount()));
+		}
+		buf.append("(").append(Core.pad(playerCountAdd)).append(")");
+		if (p != null)
+			buf.append(" ").append(getTeamScore(p.teamId)).append(":")
+					.append(getTeamScore(1 - p.teamId));
+		if (getMe().finish != null)
+			buf.append(" ").append(String.format("%.3f", (double) getTime(getMe().finish) / 1000)).append("s");
+		buf.append(" ").append(match.ip);
+		buf.append(" ").append(match.pingMS).append("ms");
+		if (disableMe)
+			buf.append(" ☓");
+		return new String(buf);
+	}
+
+	@Override
+	public String toString() {
+		return getDef().getName();
+	}
 }
 
 // 一つのショー
 class Match {
-	boolean fixed; // 完了まで読み込み済み
+	final long session; // 起動日時ベース
 	String name;
-	long id; // 過去に読み込んだステージであるかの判定用。仮。start 値で良いかも。
+	final Date start; // id として使用
+	final String ip;
 	long pingMS;
-	String ip;
-	Date start;
+	boolean isCustom;
+	boolean fixed; // 完了まで読み込み済み
 	Date end;
 	int winStreak;
 	List<Round> rounds = new ArrayList<Round>();
 
-	public Match(String name, long id, String ip) {
+	public Match(long session, String name, Date start, String ip, boolean isCustom) {
+		this.session = session;
 		this.name = name;
-		this.id = id;
+		this.start = start;
 		this.ip = ip;
+		this.isCustom = isCustom;
+	}
+
+	public void addRound(Round r) {
+		synchronized (Core.listLock) {
+			int i = rounds.indexOf(r);
+			if (i >= 0) {
+				rounds.remove(i);
+				rounds.add(i, r);
+			} else
+				rounds.add(r);
+		}
+	}
+
+	public void finished(Date end) {
+		this.end = end;
+
+		// 優勝なら match に勝利数書き込み
+		Round last = rounds.get(rounds.size() - 1);
+		Player p = last.getMe();
+		if (p != null && p.isQualified() && last.isFinal()) {
+			winStreak = 1;
+			List<Match> matches = Core.matches;
+			if (matches.size() > 1)
+				Core.currentMatch.winStreak += Core.matches.get(Core.matches.size() - 2).winStreak;
+		}
+	}
+
+	public boolean isCurrentSession() {
+		return session == Core.currentSession;
+	}
+
+	public boolean isSquad() {
+		return name.contains("squad");
+	}
+
+	public boolean isDate(int dayKey) {
+		return dayKey == Core.toDayKey(start);
+	}
+
+	boolean isMainShow() {
+		return "solo_show".equals(name);
+	}
+
+	boolean isWin() {
+		if (rounds.size() == 0)
+			return false;
+		Round r = rounds.get(rounds.size() - 1);
+		return r.isFinal() && r.isQualified();
+	}
+
+	@Override
+	public int hashCode() {
+		return start.hashCode();
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		Match o = (Match) obj;
+		return start.equals(o.start);
+	}
+
+	@Override
+	public String toString() {
+		return name;
 	}
 }
 
@@ -340,26 +568,30 @@ class RoundDef {
 	public final String key;
 	public final RoundType type;
 	public final boolean isFinalNormally; // 通常はファイナルとして出現
+	public final int teamCount;
 
 	public RoundDef(String key, RoundType type) {
-		this(key, type, false);
+		this(key, type, false, 1);
+	}
+
+	// for team
+	public RoundDef(String key, int teamCount) {
+		this(key, RoundType.TEAM, false, teamCount);
 	}
 
 	public RoundDef(String key, RoundType type, boolean isFinal) {
+		this(key, type, isFinal, 1);
+	}
+
+	private RoundDef(String key, RoundType type, boolean isFinal, int teamCount) {
 		this.key = key;
 		this.type = type;
 		this.isFinalNormally = isFinal;
+		this.teamCount = teamCount;
 	}
 
 	public String getName() {
-		try {
-			String name = Core.RES.getString(key);
-			if (name == null)
-				return key;
-			return name;
-		} catch (MissingResourceException w) {
-			return key;
-		}
+		return Core.getRes(key);
 	}
 
 	public boolean isHuntRace() {
@@ -397,7 +629,7 @@ class RoundDef {
 		add(new RoundDef("FallGuy_PipedUp", RoundType.RACE));
 		add(new RoundDef("FallGuy_Gauntlet_05", RoundType.RACE));
 
-		add(new RoundDef("FallGuy_TailTag_2", RoundType.TEAM));
+		add(new RoundDef("FallGuy_TailTag_2", 1));
 		add(new RoundDef("FallGuy_1v1_ButtonBasher", RoundType.HUNT_SURVIVE));
 		add(new RoundDef("FallGuy_Hoops_Blockade", RoundType.HUNT_RACE));
 		add(new RoundDef("FallGuy_SkeeFall", RoundType.HUNT_RACE));
@@ -416,21 +648,21 @@ class RoundDef {
 		add(new RoundDef("FallGuy_RobotRampage_Arena2", RoundType.SURVIVAL));
 		add(new RoundDef("FallGuy_FruitBowl", RoundType.SURVIVAL));
 
-		add(new RoundDef("FallGuy_ConveyorArena_01", RoundType.TEAM));
-		add(new RoundDef("FallGuy_TeamInfected", RoundType.TEAM));
-		add(new RoundDef("FallGuy_FallBall_5", RoundType.TEAM));
-		add(new RoundDef("FallGuy_BallHogs_01", RoundType.TEAM));
-		add(new RoundDef("FallGuy_RocknRoll", RoundType.TEAM));
-		add(new RoundDef("FallGuy_Hoops_01", RoundType.TEAM));
-		add(new RoundDef("FallGuy_EggGrab", RoundType.TEAM));
-		add(new RoundDef("FallGuy_EggGrab_02", RoundType.TEAM));
-		add(new RoundDef("FallGuy_Snowy_Scrap", RoundType.TEAM));
-		add(new RoundDef("FallGuy_ChickenChase_01", RoundType.TEAM));
-		add(new RoundDef("FallGuy_Basketfall_01", RoundType.TEAM));
-		add(new RoundDef("FallGuy_TerritoryControl_v2", RoundType.TEAM));
+		add(new RoundDef("FallGuy_TeamInfected", 2));
+		add(new RoundDef("FallGuy_FallBall_5", 2));
+		add(new RoundDef("FallGuy_Basketfall_01", 2));
+		add(new RoundDef("FallGuy_TerritoryControl_v2", 2));
+		add(new RoundDef("FallGuy_BallHogs_01", 3));
+		add(new RoundDef("FallGuy_RocknRoll", 3));
+		add(new RoundDef("FallGuy_Hoops_01", 3));
+		add(new RoundDef("FallGuy_EggGrab", 3));
+		add(new RoundDef("FallGuy_EggGrab_02", 3));
+		add(new RoundDef("FallGuy_Snowy_Scrap", 3));
+		add(new RoundDef("FallGuy_ChickenChase_01", 3));
+		add(new RoundDef("FallGuy_ConveyorArena_01", 4));
 
-		add(new RoundDef("FallGuy_Invisibeans", RoundType.TEAM));
-		add(new RoundDef("FallGuy_PumpkinPie", RoundType.TEAM));
+		add(new RoundDef("FallGuy_Invisibeans", 2));
+		add(new RoundDef("FallGuy_PumpkinPie", 2));
 
 		add(new RoundDef("FallGuy_FallMountain_Hub_Complete", RoundType.RACE, true));
 		add(new RoundDef("FallGuy_FloorFall", RoundType.SURVIVAL, true));
@@ -462,7 +694,7 @@ class RoundDef {
 		// round_tiptoefinale
 
 		add(new RoundDef("FallGuy_SlideChute", RoundType.RACE, false));
-		add(new RoundDef("FallGuy_FollowTheLine", RoundType.RACE, false));
+		add(new RoundDef("FallGuy_ wTheLine", RoundType.RACE, false));
 		add(new RoundDef("FallGuy_SlippySlide", RoundType.HUNT_RACE, false));
 		add(new RoundDef("FallGuy_BlastBallRuins", RoundType.SURVIVAL, false));
 		add(new RoundDef("FallGuy_Kraken_Attack", RoundType.SURVIVAL, true));
@@ -476,7 +708,296 @@ class RoundDef {
 	}
 }
 
-// 優勝回数ランキングをとりあえずデフォルト実装
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// Core.rounds をもとに実績達成判定
+// 一つの実績に複数の達成状態と付与ポイントを保持可能とする。
+class GraphPanel extends JPanel {
+	int currentValue;
+	int[] threasholds;
+
+	@Override
+	public Dimension getPreferredSize() {
+		return new Dimension(100, 20);
+	}
+
+	@Override
+	public void paint(Graphics g) {
+		if (threasholds == null)
+			return;
+		int w = getWidth(), h = getHeight();
+		int max = threasholds[threasholds.length - 1];
+		g.clearRect(0, 0, w, h);
+		g.setColor(Color.RED);
+		g.fillRect(1, 1, (w - 2) * currentValue / max, h - 2);
+		g.setColor(Color.BLUE);
+		for (int x : threasholds) {
+			if (x == max)
+				break;
+			int xx = (w - 2) * x / max + 1;
+			g.drawLine(xx, 1, xx, h - 2);
+		}
+		g.setColor(Color.BLACK);
+		g.drawRect(0, 0, w - 1, h - 1);
+	}
+}
+
+abstract class Achievement {
+	int currentValue;
+	int myPoint;
+	int[] threasholds;
+	int[] points;
+	JPanel panel = new JPanel(new BorderLayout());
+	JLabel label = new JLabel();
+	GraphPanel progressGraph = new GraphPanel();
+	JLabel progressLabel = new JLabel();
+
+	{
+		panel.add(label, BorderLayout.NORTH);
+		panel.add(progressGraph, BorderLayout.CENTER);
+		panel.add(progressLabel, BorderLayout.EAST);
+	}
+
+	public void update(int dayKey) {
+		calcCurrentValue(dayKey);
+		myPoint = 0;
+		for (int i = 0; i < threasholds.length; i += 1)
+			if (currentValue >= threasholds[i])
+				myPoint += points[i];
+		int max = threasholds[threasholds.length - 1];
+		//if (currentValue > max) currentValue = max;
+		progressGraph.currentValue = currentValue < max ? currentValue : max;
+		progressGraph.threasholds = threasholds;
+		progressGraph.repaint();
+		label.setText(toString());
+		progressLabel.setText(
+				currentValue + "/" + max + " (" + Core.calRate(currentValue < max ? currentValue : max, max) + "%)");
+		StringBuilder buf = new StringBuilder();
+		buf.append("<html>");
+		for (int i = 0; i < threasholds.length; i += 1) {
+			if (currentValue >= threasholds[i])
+				buf.append(threasholds[i] + "/" + threasholds[i] + " = " + points[i] + "pt GET!<br>");
+			else
+				buf.append(currentValue + "/" + threasholds[i] + " = " + points[i] + "pt<br>");
+		}
+		buf.append("</html>");
+		panel.setToolTipText(new String(buf));
+	}
+
+	public abstract void calcCurrentValue(int dayKey);
+
+	public abstract String getName();
+
+	@Override
+	public String toString() {
+		return getName() + "(" + points[points.length - 1] + ")";
+	}
+}
+
+class RoundCountAchievement extends Achievement {
+	public RoundCountAchievement(int[] threasholds, int[] points) {
+		this.threasholds = threasholds;
+		this.points = points;
+	}
+
+	@Override
+	public void calcCurrentValue(int dayKey) {
+		currentValue = Core.filter(r -> r.isEnabled() && (dayKey == 0 || r.isDate(dayKey))).size();
+	}
+
+	@Override
+	public String getName() {
+		return "Rounds played";
+	}
+}
+
+class WinCountAchievement extends Achievement {
+	boolean solo;
+
+	public WinCountAchievement(int[] threasholds, int[] points, boolean solo) {
+		this.threasholds = threasholds;
+		this.points = points;
+		this.solo = solo;
+	}
+
+	@Override
+	public void calcCurrentValue(int dayKey) {
+		currentValue = 0;
+		for (Match m : Core.matches) {
+			if (!m.isWin())
+				continue;
+			if (solo && !m.isMainShow())
+				continue;
+			if (dayKey > 0 && !m.isDate(dayKey))
+				continue;
+			currentValue += 1;
+		}
+	}
+
+	@Override
+	public String getName() {
+		return "Wins" + (solo ? " at solo show" : "");
+	}
+}
+
+class StreakAchievement extends Achievement {
+	int targetStreak;
+
+	public StreakAchievement(int[] threasholds, int[] points, int streak) {
+		this.threasholds = threasholds;
+		this.points = points;
+		this.targetStreak = streak;
+	}
+
+	@Override
+	public void calcCurrentValue(int dayKey) {
+		currentValue = 0;
+		int streak = 0;
+		for (Match m : Core.matches) {
+			if (m.isWin()) {
+				streak += 1;
+				if (targetStreak == streak)
+					currentValue += 1;
+			} else
+				streak = 0;
+		}
+	}
+
+	@Override
+	public String getName() {
+		return targetStreak + " wins streak";
+	}
+}
+
+class RateAchievement extends Achievement {
+	double targetRate;
+	int limit;
+
+	public RateAchievement(int[] threasholds, int[] points, double rate, int limit) {
+		this.threasholds = threasholds;
+		this.points = points;
+		this.targetRate = rate;
+		this.limit = limit;
+	}
+
+	@Override
+	public void calcCurrentValue(int dayKey) {
+		currentValue = 0;
+		int winCount = 0;
+		List<Round> filtered = Core.filter(r -> r.isEnabled());
+		if (filtered.size() < limit)
+			return;
+		Set<Match> matches = new HashSet<>();
+		for (Round r : filtered) {
+			matches.add(r.match);
+		}
+		List<Match> targetMatches = new ArrayList<>();
+		for (Match m : matches) {
+			winCount += m.isWin() ? 1 : 0;
+			if (targetMatches.size() > limit) {
+				Match o = targetMatches.remove(0);
+				winCount -= o.isWin() ? 1 : 0;
+			}
+			if (targetMatches.size() >= limit) {
+				double rate = Core.calRate(winCount, targetMatches.size());
+				if (rate >= targetRate)
+					currentValue += 1;
+			}
+		}
+	}
+
+	@Override
+	public String getName() {
+		return targetRate + "% wins in " + limit + " rounds";
+	}
+}
+
+class TeamWinAchievement extends Achievement {
+	boolean solo;
+
+	public TeamWinAchievement(int[] threasholds, int[] points) {
+		this.threasholds = threasholds;
+		this.points = points;
+		//		this.solo = solo;
+	}
+
+	@Override
+	public void calcCurrentValue(int dayKey) {
+		currentValue = Core.filter(r -> r.isEnabled() && r.getDef().type == RoundType.TEAM && r.isQualified()
+				&& (dayKey == 0 || r.isDate(dayKey))).size();
+	}
+
+	@Override
+	public String getName() {
+		return "Wins" + (solo ? " at solo show" : "");
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+interface RoundFilter {
+	boolean isEnabled(Round r);
+}
+
+class AllRoundFilter implements RoundFilter {
+	@Override
+	public boolean isEnabled(Round r) {
+		return r.getMe() != null;
+	}
+
+	@Override
+	public String toString() {
+		return Core.getRes("ALL");
+	}
+}
+
+class CurrentSessionRoundFilter implements RoundFilter {
+	@Override
+	public boolean isEnabled(Round r) {
+		return r.getMe() != null && r.match.isCurrentSession();
+	}
+
+	@Override
+	public String toString() {
+		return Core.getRes("CurrentSesionOnly");
+	}
+}
+
+class CustomRoundFilter implements RoundFilter {
+	@Override
+	public boolean isEnabled(Round r) {
+		return r.getMe() != null && r.match.isCustom;
+	}
+
+	@Override
+	public String toString() {
+		return Core.getRes("CustomOnly");
+	}
+}
+
+class SoloRoundFilter implements RoundFilter {
+	@Override
+	public boolean isEnabled(Round r) {
+		return r.match.isMainShow() && r.getMe() != null;
+	}
+
+	@Override
+	public String toString() {
+		return "SoloOnly";
+	}
+}
+
+class SquadRoundFilter implements RoundFilter {
+	@Override
+	public boolean isEnabled(Round r) {
+		return r.getMe() != null && r.isSquad();
+	}
+
+	@Override
+	public String toString() {
+		return Core.getRes("SquadOnly");
+	}
+}
+
+// ソロ優勝回数ランキングをとりあえずデフォルト実装
 class RankingMaker {
 	public String toString() {
 		return "Final/Win";
@@ -486,76 +1007,23 @@ class RankingMaker {
 		return Core.RES.getString("finalWinDesc");
 	}
 
-	// 集計対象外のマッチであるかを判定する。参加マッチ数計測のためのもの。
-	// calcTotalScore はこれが true の場合のみ呼ばれる。
-	public boolean isEnable(Round r) {
-		return true;
-	}
-
 	// stat.participationCount / winCount / totalScore を設定する。
 	// それぞれをどのような数値にするかは Maker 次第とする。
 	// fixed round ごとに呼ばれる。対象外マッチ/ラウンドならなにもしないように実装する。
 	// default は優勝数/参加マッチ数。final 進出、優勝でポイント加算。
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.participationCount = stat.matches.size();
 		if (r.isFinal()) {
 			stat.totalScore += Core.PT_FINALS;
-			if (p.qualified == Boolean.TRUE) {
-				stat.winCount += 1;
-				stat.totalScore += Core.PT_WIN;
-			}
+			stat.setWin(r, p.isQualified(), Core.PT_WIN);
 			return;
 		}
+		if (!p.isQualified())
+			stat.setWin(r, false, 0);
 	}
 
-	public String getRanking(int sort, int minMatches) {
-		List<PlayerStat> list;
-		synchronized (Core.listLock) {
-			list = new ArrayList<PlayerStat>(Core.stats.values());
-		}
-		if (list.size() == 0)
-			return "";
-		Comparator<PlayerStat> comp;
-		switch (sort) {
-		case 1:
-			comp = new Core.StatComparatorWin();
-			break;
-		case 2:
-			comp = new Core.StatComparatorRate();
-			break;
-		case 0:
-		default:
-			comp = new Core.StatComparatorScore();
-			break;
-		}
-		Collections.sort(list, comp);
-		return getRanking(list, minMatches, comp);
-	}
-
-	protected String getRanking(List<PlayerStat> list, int minMatches, Comparator<PlayerStat> comp) {
-		StringBuilder buf = new StringBuilder();
-		int internalNo = 0;
-		int dispNo = 0;
-		PlayerStat prev = null;
-		for (PlayerStat stat : list) {
-			if (stat.totalScore <= 0) // スコア０を表示するかどうかはモードにも依存するかもしれないがひとまず除外
-				continue;
-			if (stat.participationCount >= minMatches) {
-				internalNo += 1;
-				if (prev == null || comp.compare(stat, prev) != 0) {
-					dispNo = internalNo;
-				}
-				buf.append(Core.pad(dispNo)).append(" ");
-				prev = stat;
-
-				buf.append("(").append(Core.pad(stat.winCount)).append("/").append(Core.pad(stat.participationCount))
-						.append(") ").append(String.format("%6.2f", stat.getRate()))
-						.append("% ").append(String.format("%3d", stat.totalScore)).append("pt");
-				buf.append(" ").append(stat).append("\n");
-			}
-		}
-		buf.append("total: ").append(internalNo).append("\n");
-		return new String(buf);
+	public void calcFinish(PlayerStat stat) {
+		stat.participationCount = Core.getMatchCount(o -> o.match.isCurrentSession());
+		stat.totalParticipationCount = Core.getMatchCount(Core.filter);
 	}
 }
 
@@ -573,13 +1041,9 @@ class FeedFirstRankingMaker extends RankingMaker {
 
 	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.participationCount = stat.matches.size();
 		if (r.isFinal()) {
 			stat.totalScore += Core.PT_FINALS;
-			if (p.qualified == Boolean.TRUE) {
-				stat.winCount += 1;
-				stat.totalScore += Core.PT_WIN;
-			}
+			stat.setWin(r, p.isQualified(), Core.PT_WIN);
 			return;
 		}
 		// 順位に意味のある種目のみ
@@ -588,6 +1052,8 @@ class FeedFirstRankingMaker extends RankingMaker {
 			if (p.ranking == 1) // 1st
 				stat.totalScore += Core.PT_1ST;
 		}
+		if (!p.isQualified())
+			stat.setWin(r, false, 0);
 	}
 }
 
@@ -604,25 +1070,28 @@ class SquadsRankingMaker extends RankingMaker {
 	}
 
 	@Override
-	public boolean isEnable(Round r) {
-		// squadId のあるもののみ
-		return r.byId.size() > 0 && r.byId.values().iterator().next().squadId != 0;
-	}
-
-	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.participationCount = stat.matches.size();
+		if (!r.isSquad())
+			return;
 		if (r.isFinal()) {
 			stat.totalScore += Core.PT_FINALS;
 			// メンバーの誰かに優勝者がいれば優勝とみなす。
 			for (Player member : r.getSquad(p.squadId).members) {
-				if (member.qualified == Boolean.TRUE) {
-					stat.winCount += 1;
-					stat.totalScore += Core.PT_WIN;
+				if (member.isQualified()) {
+					stat.setWin(r, true, Core.PT_WIN);
 					return;
 				}
 			}
 		}
+		// FIXME: スクアッドとしての脱落判定方法。自分が qualidied でなくても通過がありうる。
+		if (!p.isQualified())
+			stat.setWin(r, false, 0);
+	}
+
+	@Override
+	public void calcFinish(PlayerStat stat) {
+		stat.participationCount = Core.getMatchCount(o -> o.isSquad() && o.match.isCurrentSession());
+		stat.totalParticipationCount = Core.getMatchCount(o -> o.isSquad() && Core.filter.isEnabled(o));
 	}
 }
 
@@ -639,18 +1108,18 @@ class FallBallRankingMaker extends RankingMaker {
 	}
 
 	@Override
-	public boolean isEnable(Round r) {
+	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		// fallball custom round のみ
-		return r.name.equals("FallGuy_FallBall_5");
+		if (!r.name.equals("FallGuy_FallBall_5"))
+			return;
+		if (r.match.isCurrentSession())
+			stat.participationCount += 1; // 参加 round 数
+		stat.totalParticipationCount += 1; // 参加 round 数
+		stat.setWin(r, p.isQualified(), 1);
 	}
 
 	@Override
-	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.participationCount += 1; // 参加 round 数
-		if (p.qualified == Boolean.TRUE) {
-			stat.winCount += 1;
-			stat.totalScore += 1;
-		}
+	public void calcFinish(PlayerStat stat) {
 	}
 }
 
@@ -667,18 +1136,18 @@ class OneOnOneRankingMaker extends RankingMaker {
 	}
 
 	@Override
-	public boolean isEnable(Round r) {
+	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		// 1v1 stage only
-		return r.name.equals("FallGuy_1v1_Volleyfall") || r.name.equals("FallGuy_1v1_ButtonBasher");
+		if (!r.name.equals("FallGuy_1v1_Volleyfall") && !r.name.equals("FallGuy_1v1_ButtonBasher"))
+			return;
+		if (r.match.isCurrentSession())
+			stat.participationCount += 1; // 参加 round 数
+		stat.totalParticipationCount += 1; // 参加 round 数
+		stat.setWin(r, p.isQualified(), 1);
 	}
 
 	@Override
-	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.participationCount += 1; // 参加 round 数
-		if (p.qualified == Boolean.TRUE) {
-			stat.winCount += 1;
-			stat.totalScore += 1;
-		}
+	public void calcFinish(PlayerStat stat) {
 	}
 }
 
@@ -695,22 +1164,19 @@ class CandyRankingMaker extends RankingMaker {
 	}
 
 	@Override
-	public boolean isEnable(Round r) {
-		// thieves のみ
-		return "FallGuy_Invisibeans".equals(r.name) || "FallGuy_PumpkinPie".equals(r.name);
-	}
-
-	@Override
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.participationCount += 1;
-		if (p.qualified == Boolean.TRUE)
-			stat.winCount += 1;
+		// thieves のみ
+		if (!"FallGuy_Invisibeans".equals(r.name) && !"FallGuy_PumpkinPie".equals(r.name))
+			return;
+		if (!r.match.isCurrentSession())
+			stat.participationCount += 1; // 参加 round 数
+		stat.totalParticipationCount += 1; // 参加 round 数
+		boolean myResult = p.isQualified();
+		stat.setWin(r, myResult, 1);
 		if (p.qualified == null)
 			return; // 結果の出ていないものは個別集計から除外する
 		boolean isGuard = false;
-		boolean myResult = p.qualified == Boolean.TRUE;
 		int sameResultPlayers = 0;
-		stat.totalScore += myResult ? 1 : 0;
 
 		for (Player o : r.byId.values())
 			if (o.qualified != null && myResult == o.qualified)
@@ -740,60 +1206,7 @@ class CandyRankingMaker extends RankingMaker {
 	}
 
 	@Override
-	protected String getRanking(List<PlayerStat> list, int minMatches, Comparator<PlayerStat> comp) {
-		StringBuilder buf = new StringBuilder();
-		int internalNo = 0;
-		int dispNo = 0;
-		PlayerStat prev = null;
-		for (PlayerStat stat : list) {
-			if (stat.participationCount >= minMatches) {
-				internalNo += 1;
-				if (prev == null || comp.compare(stat, prev) != 0) {
-					dispNo = internalNo;
-				}
-				buf.append(Core.pad(dispNo)).append(" ").append(stat).append("\n");
-				prev = stat;
-
-				buf.append("  total: ").append(Core.pad(stat.winCount)).append("/")
-						.append(Core.pad(stat.participationCount))
-						.append(" (")
-						.append(String.format("%6.2f", stat.getRate())).append("%)\n");
-				buf.append("  thief: ").append(Core.pad(stat.getIntAdditional("thiefWin")))
-						.append("/").append(Core.pad(stat.getIntAdditional("thiefMatch"))).append(" (")
-						.append(String.format("%6.2f",
-								Core.calRate(stat.getIntAdditional("thiefWin"),
-										stat.getIntAdditional("thiefMatch"))))
-						.append("%)\n");
-				buf.append("  guard: ").append(Core.pad(stat.getIntAdditional("guardWin")))
-						.append("/").append(Core.pad(stat.getIntAdditional("guardMatch"))).append(" (")
-						.append(String.format("%6.2f",
-								Core.calRate(stat.getIntAdditional("guardWin"),
-										stat.getIntAdditional("guardMatch"))))
-						.append("%)\n");
-			}
-		}
-		return new String(buf);
-	}
-}
-
-// match 単位で、存在した回数ランキング。自分にスナイプした回数順ということ。
-class SnipeRankingMaker extends RankingMaker {
-	@Override
-	public String toString() {
-		return "Snipes";
-	}
-
-	@Override
-	public String getDesc() {
-		return Core.RES.getString("snipesDesc");
-	}
-
-	@Override
-	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		stat.totalScore = stat.participationCount = stat.matches.size();
-		if (r.isFinal() && p.qualified == Boolean.TRUE) {
-			stat.winCount += 1;
-		}
+	public void calcFinish(PlayerStat stat) {
 	}
 }
 
@@ -804,6 +1217,7 @@ class Core {
 	static Locale LANG;
 	static ResourceBundle RES;
 	static Object listLock = new Object();
+	static boolean started = false;
 
 	// utilities
 	public static double calRate(int win, int round) {
@@ -817,12 +1231,43 @@ class Core {
 		return rate.doubleValue();
 	}
 
+	public static String getRes(String key) {
+		try {
+			return RES.getString(key);
+		} catch (Exception e) {
+			return key;
+		}
+	}
+
 	public static String pad(int v) {
 		return String.format("%2d", v);
 	}
 
 	public static String pad0(int v) {
 		return String.format("%02d", v);
+	}
+
+	public static int[] intArrayFromString(String string) {
+		String[] strings = string.replace("[", "").replace("]", "").split(", ");
+		if (strings.length == 0)
+			return null;
+		int result[] = new int[strings.length];
+		for (int i = 0; i < result.length; i++) {
+			result[i] = Integer.parseInt(strings[i]);
+		}
+		return result;
+	}
+
+	public static int toDayKey(Date date) {
+		Calendar c = Calendar.getInstance();
+		c.setTime(date);
+		return c.get(Calendar.YEAR) * 10000 + c.get(Calendar.MONTH) * 100 + c.get(Calendar.DAY_OF_MONTH);
+	}
+
+	public static int toWeekKey(Date date) {
+		Calendar c = Calendar.getInstance();
+		c.setTime(date);
+		return c.get(Calendar.YEAR) * 100 + c.get(Calendar.WEEK_OF_YEAR);
 	}
 
 	/*
@@ -836,52 +1281,203 @@ class Core {
 	*/
 
 	//////////////////////////////////////////////////////////////
+	public static RoundFilter filter = new CurrentSessionRoundFilter();
+	public static int limit = 0;
+	public static long currentSession;
+	public static int currentYear;
+	public static int currentMonth;
+	public static int currentUTCDate;
 	public static String currentServerIp;
-	public static String myName; // 自分を決めるキーだが省略されているため他者と被る可能性も…またPC版では３単語名ベースになる
-	public static String myNameFull; // 現状未使用
 	public static RankingMaker rankingMaker = new RankingMaker();
-	public static final List<Match> matches = new ArrayList<Match>();
-	public static final List<Round> rounds = new ArrayList<Round>();
-	public static final Map<String, PlayerStat> stats = new HashMap<String, PlayerStat>();
-	public static Map<String, String> playerStyles = new HashMap<String, String>();
-	public static Map<String, String> playerMemos = new HashMap<String, String>();
-	public static Map<String, Map<String, String>> servers = new HashMap<String, Map<String, String>>();
+	public static final List<Match> matches = new ArrayList<>();
+	public static final List<Round> rounds = new ArrayList<>();
+	public static Match currentMatch;
+	public static Round currentRound;
+	public static List<Round> filtered;
+	public static Map<String, Map<String, String>> servers = new HashMap<>();
+	public static final PlayerStat stat = new PlayerStat();
+	public static final List<Achievement> achievements = new ArrayList<>();
+	public static final List<Achievement> dailyChallenges = new ArrayList<>();
+	public static final List<Achievement> weeklyChallenges = new ArrayList<>();
+
+	static final SimpleDateFormat datef = new SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN);
+	static final DateFormat f = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS");
+	static {
+		f.setTimeZone(TimeZone.getTimeZone("UTC"));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 5 }, 10, 30));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 5 }, 20, 30));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 10 }, 30, 30));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 20 }, 40, 30));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 20 }, 50, 30));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 5 }, 10, 50));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 10 }, 20, 50));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 20 }, 30, 50));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 50 }, 40, 50));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 10 }, 20, 100));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 20 }, 30, 100));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 50 }, 40, 100));
+		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 100 }, 50, 100));
+
+		achievements.add(new RoundCountAchievement(new int[] { 500, 1000, 2500 },
+				new int[] { 5, 5, 5 }));
+		achievements.add(new RoundCountAchievement(
+				new int[] { 5000, 7500, 10000, 12500, 15000, 17500, 20000, 22500, 25000, 27500, 30000 },
+				new int[] { 5, 8, 10, 13, 15, 18, 20, 23, 25, 28, 30 }));
+
+		// wins
+		achievements.add(new WinCountAchievement(new int[] { 500, 1000, 2500 },
+				new int[] { 5, 5, 5 }, false));
+		achievements.add(new WinCountAchievement(new int[] { 5000, 7500, 10000, 12500, 15000, 17500, 20000 },
+				new int[] { 10, 15, 20, 25, 30, 35, 40 }, false));
+		achievements.add(new WinCountAchievement(new int[] { 100, 300, 1000 },
+				new int[] { 5, 10, 50 }, true));
+
+		dailyChallenges.add(new RoundCountAchievement(new int[] { 10 }, new int[] { 1 }));
+		dailyChallenges.add(new RoundCountAchievement(new int[] { 20 }, new int[] { 1 }));
+		dailyChallenges.add(new WinCountAchievement(new int[] { 1 }, new int[] { 1 }, false));
+		dailyChallenges.add(new TeamWinAchievement(new int[] { 1 }, new int[] { 1 }));
+
+		weeklyChallenges.add(new RoundCountAchievement(new int[] { 100 }, new int[] { 5 }));
+		weeklyChallenges.add(new WinCountAchievement(new int[] { 75 }, new int[] { 10 }, false));
+	}
+	static final int[] titledPoints = new int[] { 100, 1000, 3000, 7000, 10000 };
+	static final String[] titles = new String[] { "名もなきフォールボーラー", "さすらいのフォールボーラー", "フォルボジャンキー", "フォルボ地元代表", "フォルボエンペラー",
+			"協会公認フォルボマスター" };
 
 	public static void load() {
-		//Core.playerStyles.clear();
-		//Core.playerMemos.clear();
+		rounds.clear();
 		try (BufferedReader in = new BufferedReader(
-				new InputStreamReader(new FileInputStream("players.tsv"), StandardCharsets.UTF_8))) {
+				new InputStreamReader(new FileInputStream("stats.tsv"), StandardCharsets.UTF_8))) {
 			String line;
+			Match m = null;
 			while ((line = in.readLine()) != null) {
 				String[] d = line.split("\t");
-				if (d.length > 1 && !"".equals(d[1]) && !"null".equals(d[1]))
-					Core.playerStyles.put(d[0], d[1]);
-				if (d.length > 2 && !"".equals(d[2]) && !"null".equals(d[2]))
-					Core.playerMemos.put(d[0], d[2]);
+				if (d.length < 7)
+					continue;
+
+				if ("M".equals(d[0])) {
+					Date matchStart = f.parse(d[2]);
+					boolean isCustom = d.length > 7 && "true".equals(d[7]);
+					m = new Match(Long.parseLong(d[1]), d[3], matchStart, d[4], isCustom);
+					m.pingMS = Integer.parseInt(d[5]);
+					m.winStreak = Integer.parseInt(d[6]);
+					addMatch(m);
+					continue;
+				}
+				if (!"r".equals(d[0]) || d.length < 18)
+					continue;
+				Round r = new Round(d[3], Integer.parseInt(d[2]), f.parse(d[1]), "true".equals(d[5]), m);
+				r.roundName2 = d[4];
+				r.fixed = true;
+
+				r.playerCount = Integer.parseInt(d[6]);
+				r.qualifiedCount = Integer.parseInt(d[7]);
+				Player p = new Player(0);
+				p.name = "YOU";
+				if (d[8].length() > 0)
+					p.finish = r.end = new Date(r.start.getTime() + Long.parseUnsignedLong(d[8]));
+				p.qualified = "true".equals(d[9]);
+				r.disableMe = "true".equals(d[10]);
+				r.playerCountAdd = Integer.parseInt(d[11]);
+				r.playerCountAddChanged = r.playerCountAdd != 0;
+				p.ranking = Integer.parseInt(d[12]);
+				p.score = Integer.parseInt(d[13]);
+				p.finalScore = Integer.parseInt(d[14]);
+				p.partyId = Integer.parseInt(d[15]);
+				p.squadId = Integer.parseInt(d[16]);
+				p.teamId = Integer.parseInt(d[17]);
+				if (d.length > 18)
+					r.teamScore = Core.intArrayFromString(d[18]);
+				r.add(p);
+				addRound(r);
+				r.playerCount = Integer.parseInt(d[6]); // reset
 			}
-		} catch (IOException ex) {
+		} catch (Exception ex) {
+			ex.printStackTrace();
 		}
 	}
 
 	public static void save() {
+		try {
+			Files.copy(Paths.get("stats.tsv"), Paths.get("stats_prev.tsv"), StandardCopyOption.REPLACE_EXISTING);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 		try (PrintWriter out = new PrintWriter(
-				new OutputStreamWriter(new FileOutputStream("players.tsv"), StandardCharsets.UTF_8),
+				new OutputStreamWriter(new FileOutputStream("stats.tsv"), StandardCharsets.UTF_8),
 				false)) {
-			Core.playerStyles.remove(null);
-			Core.playerMemos.remove(null);
-			List<String> names = new ArrayList<String>();
-			names.addAll(Core.playerStyles.keySet());
-			names.addAll(Core.playerMemos.keySet());
-			Collections.sort(names);
-			for (String name : new LinkedHashSet<String>(names)) {
-				out.print(name);
+			out.println(
+					"Type\tStart\tNo\tName\tName2\tFinal\tPlayers\tQualifiedCount\tTime\tQualified\tDisabled\tplayerCoundAdd\tRank\tScore\tFinalScore\tParty\tSquad\tTeam\tTeamScore");
+			Match currentMatch = null;
+			Collections.sort(rounds);
+			for (Round r : rounds) {
+				if (!r.isEnabled())
+					continue;
+				Player p = r.getMe();
+				if (p == null)
+					continue;
+				if (currentMatch == null || !currentMatch.equals(r.match)) {
+					currentMatch = r.match;
+					// write match line
+					out.print("M"); // 0
+					out.print("\t");
+					out.print(currentMatch.session); // 1
+					out.print("\t");
+					out.print(f.format(currentMatch.start)); // 2
+					out.print("\t");
+					out.print(currentMatch.name); // 3
+					out.print("\t");
+					out.print(currentMatch.ip); // 4
+					out.print("\t");
+					out.print(currentMatch.pingMS); // 5
+					out.print("\t");
+					out.print(currentMatch.winStreak); // 6
+					out.print("\t");
+					out.print(currentMatch.isCustom); // 7
+					out.println();
+				}
+				out.print("r"); // 0
 				out.print("\t");
-				String style = Core.playerStyles.get(name);
-				out.print(style == null ? "" : style);
+				out.print(f.format(r.start)); // 1
 				out.print("\t");
-				String memo = Core.playerMemos.get(name);
-				out.print(memo == null ? "" : memo);
+				out.print(r.no); // 2
+				out.print("\t");
+				out.print(r.name); // 3
+				out.print("\t");
+				out.print(r.roundName2); // 4
+				out.print("\t");
+				out.print(r.isFinal()); // 5
+				out.print("\t");
+				out.print(r.playerCount); // 6
+				out.print("\t");
+				out.print(r.qualifiedCount); // 7
+				out.print("\t");
+				if (p.finish != null)
+					out.print(r.getTime(p.finish)); // 8
+				else if (r.end != null)
+					out.print(r.getTime(r.end)); // 8
+
+				out.print("\t");
+				out.print(p.isQualified()); // 9
+				out.print("\t");
+				out.print(r.disableMe); // 10
+				out.print("\t");
+				out.print(r.playerCountAdd); // 11
+				out.print("\t");
+				out.print(p.ranking); // 12
+				out.print("\t");
+				out.print(p.score); // 13
+				out.print("\t");
+				out.print(p.finalScore); // 14
+				out.print("\t");
+				out.print(p.partyId); // 15
+				out.print("\t");
+				out.print(p.squadId); // 16
+				out.print("\t");
+				out.print(p.teamId); // 17
+				out.print("\t");
+				if (r.teamScore != null)
+					out.print(Arrays.toString(r.teamScore)); // 18
 				out.println();
 			}
 		} catch (IOException ex) {
@@ -889,101 +1485,145 @@ class Core {
 		}
 	}
 
+	// 2000-01-01 の時刻にする
+	static Date normalizedDate(Date d) {
+		Calendar c = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+		c.setTime(d);
+		c.set(Calendar.YEAR, 2000);
+		c.set(Calendar.MONTH, 0);
+		c.set(Calendar.DAY_OF_MONTH, 1);
+		return c.getTime();
+	}
+
 	public static void addMatch(Match m) {
-		for (Match o : matches)
-			if (m.id == o.id)
-				return; // already added
+		currentMatch = m;
 		synchronized (listLock) {
+			// 既にあれば差し替え
+			int i = matches.indexOf(m);
+			if (i >= 0) {
+				matches.remove(i);
+				matches.add(i, m);
+			} else
+				matches.add(m);
 			// 直前のマッチのラウンド０だったら除去
-			if (matches.size() > 1 && getCurrentMatch().rounds.size() == 0)
-				matches.remove(matches.size() - 1);
-			matches.add(m);
+			if (matches.size() > 2 && matches.get(matches.size() - 2).rounds.size() == 0)
+				matches.remove(matches.size() - 2);
 		}
 	}
 
 	public static void addRound(Round r) {
-		for (Round o : rounds)
-			if (r.id == o.id)
-				return; // already added
+		currentRound = r;
 		synchronized (listLock) {
-			rounds.add(r);
-			getCurrentMatch().rounds.add(r);
+			r.match.addRound(r);
+			int i = rounds.indexOf(r);
+			if (i >= 0) {
+				Round o = rounds.remove(i);
+				r.playerCountAdd = o.playerCountAdd;
+				r.playerCountAddChanged = o.playerCountAddChanged;
+				r.disableMe = o.disableMe;
+				rounds.add(i, r);
+			} else
+				rounds.add(r);
 		}
 	}
 
-	public static PlayerStat getMyStat() {
-		return stats.get(Core.myName);
+	// 条件に合うラウンドを含むマッチ数を数える。
+	// ラウンド数ではないことに注意。
+	static int getMatchCount(RoundFilter f) {
+		if (f == null)
+			return matches.size();
+		Set<Match> result = new HashSet<>();
+		for (Round r : rounds)
+			if (f.isEnabled(r))
+				result.add(r.match);
+		return result.size();
 	}
 
-	public static Match getCurrentMatch() {
-		if (matches.size() == 0)
-			return null;
-		return matches.get(matches.size() - 1);
+	public static List<Round> filter(RoundFilter f) {
+		return filter(f, 0, false);
 	}
 
-	public static Round getCurrentRound() {
-		if (rounds.size() == 0)
-			return null;
-		return rounds.get(rounds.size() - 1);
+	public static List<Round> filter(RoundFilter f, int limit, boolean cacheUpdate) {
+		List<Round> result = new ArrayList<>();
+		int c = 0;
+		synchronized (listLock) {
+			for (ListIterator<Round> i = rounds.listIterator(rounds.size()); i.hasPrevious();) {
+				Round r = i.previous();
+				if (f != null && !f.isEnabled(r))
+					continue;
+				result.add(0, r);
+				c += 1;
+				if (limit > 0 && c >= limit)
+					break;
+			}
+		}
+		if (cacheUpdate)
+			filtered = result;
+		return result;
 	}
 
 	public static void updateStats() {
+		if (!started)
+			return;
 		synchronized (listLock) {
-			stats.clear();
-			for (Round r : rounds) {
-				//				if (!r.fixed)
-				//					continue;
-				if (!rankingMaker.isEnable(r))
+			stat.reset();
+			for (Round r : filter(filter, limit, true)) {
+				if (!r.fixed || !r.isEnabled() || r.getSubstanceQualifiedCount() == 0)
 					continue;
+
 				// このラウンドの参加者の結果を反映
 				for (Player p : r.byId.values()) {
-					PlayerStat stat = stats.get(p.name);
-					if (stat == null) {
-						stat = new PlayerStat(p.name, p.platform);
-						stats.put(stat.name, stat);
-					}
-					stat.matches.add(r.match);
+					if (!"YOU".equals(p.name))
+						continue;
 					rankingMaker.calcTotalScore(stat, p, r);
 				}
 			}
+			rankingMaker.calcFinish(stat);
 		}
 	}
 
-	static class StatComparatorScore implements Comparator<PlayerStat> {
-		@Override
-		public int compare(PlayerStat p1, PlayerStat p2) {
-			int v = (int) Math.signum(p2.totalScore - p1.totalScore);
-			if (v != 0)
-				return v;
-			// 第２ソートを rate とする。
-			return (int) Math.signum(p2.getRate() - p1.getRate());
-		}
+	public static void updateAchivements() {
+		if (!started)
+			return;
+		SwingUtilities.invokeLater(() -> {
+			synchronized (Core.listLock) {
+				stat.totalAchievementPoint = 0;
+				for (Achievement a : achievements) {
+					a.update(0);
+					stat.totalAchievementPoint += a.myPoint;
+				}
+
+				stat.totalDailyPoint = 0;
+				int currentDayKey = 0;
+				for (Round r : Core.rounds) {
+					int dayKey = Core.toDayKey(r.start);
+					if (currentDayKey == 0 || currentDayKey != dayKey) {
+						currentDayKey = dayKey;
+						for (Achievement a : Core.getChallenges(dayKey)) {
+							a.update(dayKey);
+							stat.totalDailyPoint += a.myPoint;
+						}
+					}
+				}
+				stat.todayDailyPoint = 0;
+				/*
+				for (Achievement a : Core.getChallenges(dayKey)) {
+					a.update(dayKey);
+					stat.todayDailyPoint += a.currentValue;
+				}
+				*/
+			}
+		});
 	}
 
-	static class StatComparatorWin implements Comparator<PlayerStat> {
-		@Override
-		public int compare(PlayerStat p1, PlayerStat p2) {
-			int v = (int) Math.signum(p2.winCount - p1.winCount);
-			if (v != 0)
-				return v;
-			// 第２ソートを rate とする。
-			v = (int) Math.signum(p2.getRate() - p1.getRate());
-			if (v != 0)
-				return v;
-			// 第３ソートを score とする。
-			return (int) Math.signum(p2.totalScore - p1.totalScore);
-		}
-	}
+	public static List<Achievement> getChallenges(int dayKey) {
+		Random random = new Random(dayKey);
 
-	static class StatComparatorRate implements Comparator<PlayerStat> {
-		@Override
-		public int compare(PlayerStat p1, PlayerStat p2) {
-			int v = (int) Math.signum(p2.getRate() - p1.getRate());
-			if (v != 0)
-				return v;
-			// 第２ソートを score とする。
-			return (int) Math.signum(p2.totalScore - p1.totalScore);
-		}
+		List<Achievement> result = new ArrayList<>(dailyChallenges); // copy
+		Collections.shuffle(result, random);
+		while (result.size() > 3)
+			result.remove(result.size() - 1);
+		return result;
 	}
 
 	static class PlayerComparator implements Comparator<Player> {
@@ -1048,12 +1688,12 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	ReadState readState = ReadState.SHOW_DETECTING;
+	boolean isCustomShow = false;
 	int myObjectId = 0;
 	int topObjectId = 0;
 	int qualifiedCount = 0;
 	int eliminatedCount = 0;
 	boolean isFinal = false;
-	long prevNetworkCheckedTime = System.currentTimeMillis();
 
 	Timer survivalScoreTimer;
 
@@ -1067,8 +1707,17 @@ class FGReader extends TailerListenerAdapter {
 		}
 	}
 
+	static Pattern patternDateDetect = Pattern
+			.compile("(\\d\\d\\d\\d-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d)[^ ]+ LogEOS\\(Info\\)");
+	static Pattern patternLaunch = Pattern
+			.compile("\\[FGClient.GlobalInitialisation\\] Active Scene is 'Init'");
 	static Pattern patternServer = Pattern
 			.compile("\\[StateConnectToGame\\] We're connected to the server! Host = ([^:]+)");
+
+	static Pattern patternShowStartNormalShow = Pattern
+			.compile("\\[GameStateMachine\\] Replacing FGClient.StateMatchmaking with FGClient.StateConnectToGame");
+	static Pattern patternShowStartCustomShow = Pattern
+			.compile("\\[GameStateMachine\\] Replacing FGClient.StatePrivateLobby with FGClient.StateConnectToGame");
 
 	static Pattern patternShowName = Pattern.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
 	//	static Pattern patternShow = Pattern
@@ -1084,17 +1733,20 @@ class FGReader extends TailerListenerAdapter {
 					"\\[ClientGameManager\\] Handling bootstrap for local player FallGuy \\[(\\d+)\\] \\(FG.Common.MPGNetObject\\), playerID = (\\d+), squadID = (\\d+)");
 	static Pattern patternPlayerObjectId = Pattern.compile(
 			"\\[ClientGameManager\\] Handling bootstrap for [^ ]+ player FallGuy \\[(\\d+)\\].+, playerID = (\\d+)");
-	static Pattern patternPlayerSpawn = Pattern.compile(
+	static Pattern patternPlayerSpawned = Pattern.compile(
 			"\\[CameraDirector\\] Adding Spectator target (.+) \\((.+)\\) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
 	//static Pattern patternPlayerSpawnFinish = Pattern.compile("\\[ClientGameManager\\] Finalising spawn for player FallGuy \\[(\\d+)\\] (.+) \\((.+)\\) ");
-
+	static Pattern patternPlayerUnspawned = Pattern
+			.compile("\\[ClientGameManager\\] Handling unspawn for player FallGuy \\[(\\d+)\\]");
 	static Pattern patternScoreUpdated = Pattern.compile("Player (\\d+) score = (\\d+)");
+	static Pattern patternTeamScoreUpdated = Pattern.compile("Team (\\d+) score = (\\d+)");
 	static Pattern patternPlayerResult = Pattern.compile(
 			"ClientGameManager::HandleServerPlayerProgress PlayerId=(\\d+) is succeeded=([^\\s]+)");
 
 	static Pattern patternPlayerResult2 = Pattern.compile(
 			"-playerId:(\\d+) points:(\\d+) isfinal:([^\\s]+) name:");
 
+	static DateFormat date8601Local = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 	static DateFormat f = new SimpleDateFormat("HH:mm:ss.SSS");
 	static {
 		f.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -1102,8 +1754,17 @@ class FGReader extends TailerListenerAdapter {
 
 	static Date getTime(String line) {
 		try {
-			Date date = f.parse(line.substring(0, 12));
-			return date;
+			Calendar c = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+			Calendar parsed = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+			parsed.setTime(f.parse(line.substring(0, 12)));
+			c.set(Calendar.YEAR, Core.currentYear);
+			c.set(Calendar.MONTH, Core.currentMonth);
+			c.set(Calendar.DAY_OF_MONTH, Core.currentUTCDate);
+			c.set(Calendar.HOUR_OF_DAY, parsed.get(Calendar.HOUR_OF_DAY));
+			c.set(Calendar.MINUTE, parsed.get(Calendar.MINUTE));
+			c.set(Calendar.SECOND, parsed.get(Calendar.SECOND));
+			c.set(Calendar.MILLISECOND, parsed.get(Calendar.MILLISECOND));
+			return c.getTime();
 		} catch (ParseException e) {
 			//e.printStackTrace();
 		}
@@ -1111,53 +1772,68 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	private void parseLine(String line) {
-		Round r = Core.getCurrentRound();
+		Round r = Core.currentRound;
+		Matcher m = patternLaunch.matcher(line);
+		if (m.find()) {
+			Core.currentSession = getTime(line).getTime();
+			return;
+		}
+		m = patternDateDetect.matcher(line);
+		if (m.find()) {
+			try {
+				Calendar c = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+				c.setTime(date8601Local.parse(m.group(1)));
+				Core.currentYear = c.get(Calendar.YEAR);
+				Core.currentMonth = c.get(Calendar.MONTH);
+				Core.currentUTCDate = c.get(Calendar.DAY_OF_MONTH);
+			} catch (ParseException e) {
+				//e.printStackTrace();
+			}
+			return;
+		}
+		/*
 		if (line.contains("[UserInfo] Player Name:")) {
 			String[] sp = line.split("Player Name: ", 2);
 			Core.myNameFull = sp[1];
 		}
-		Matcher m = patternServer.matcher(line);
+		*/
+		m = patternServer.matcher(line);
 		if (m.find()) {
 			String showName = "_";
-			long id = getTime(line).getTime();
 			String ip = m.group(1);
-			Match match = new Match(showName, id, ip);
+			Match match = new Match(Core.currentSession, showName, getTime(line), ip, isCustomShow);
 			Core.addMatch(match);
-			System.out.println("DETECT SHOW STARTING");
-			match.start = getTime(line);
+			System.out.println("DETECT SHOW STARTING " + showName);
 			readState = ReadState.ROUND_DETECTING;
 
-			if (!ip.equals(Core.currentServerIp)) {
-				System.out.println("new server detected: " + ip);
-				long now = System.currentTimeMillis();
-				if (match.pingMS == 0 || prevNetworkCheckedTime + 60 * 1000 < now) {
-					Core.currentServerIp = ip;
-					prevNetworkCheckedTime = now;
-					// ping check
-					try {
-						InetAddress address = InetAddress.getByName(ip);
-						boolean res = address.isReachable(3000);
-						match.pingMS = System.currentTimeMillis() - now;
-						System.out.println("PING " + res + " " + match.pingMS);
-						Map<String, String> server = Core.servers.get(ip);
-						if (server == null) {
-							ObjectMapper mapper = new ObjectMapper();
-							JsonNode root = mapper.readTree(new URL("http://ip-api.com/json/" + ip));
-							server = new HashMap<String, String>();
-							server.put("country", root.get("country").asText());
-							server.put("regionName", root.get("regionName").asText());
-							server.put("city", root.get("city").asText());
-							server.put("timezone", root.get("timezone").asText());
-							Core.servers.put(ip, server);
-						}
-						System.err.println(ip + " " + match.pingMS + " " + server.get("timezone") + " "
-								+ server.get("city"));
-					} catch (IOException e) {
-						e.printStackTrace();
+			if (match.pingMS == 0) {
+				Core.currentServerIp = ip;
+				// ping check
+				try {
+					InetAddress address = InetAddress.getByName(ip);
+					long now = System.currentTimeMillis();
+					boolean res = address.isReachable(3000);
+					match.pingMS = System.currentTimeMillis() - now;
+					System.out.println("PING " + res + " " + match.pingMS);
+					Map<String, String> server = Core.servers.get(ip);
+					if (server == null) {
+						ObjectMapper mapper = new ObjectMapper();
+						JsonNode root = mapper.readTree(new URL("http://ip-api.com/json/" + ip));
+						server = new HashMap<String, String>();
+						server.put("country", root.get("country").asText());
+						server.put("regionName", root.get("regionName").asText());
+						server.put("city", root.get("city").asText());
+						server.put("timezone", root.get("timezone").asText());
+						Core.servers.put(ip, server);
 					}
+					System.err.println(ip + " " + match.pingMS + " " + server.get("timezone") + " "
+							+ server.get("city"));
+				} catch (IOException e) {
+					e.printStackTrace();
 				}
 			}
 			listener.showUpdated();
+			return;
 		}
 		m = patternLocalPlayerId.matcher(line);
 		if (m.find()) {
@@ -1166,25 +1842,38 @@ class FGReader extends TailerListenerAdapter {
 		switch (readState) {
 		case SHOW_DETECTING: // start show or round detection
 		case ROUND_DETECTING: // start round detection
+			m = patternShowStartNormalShow.matcher(line);
+			if (m.find()) {
+				isCustomShow = false;
+				return;
+			}
+			m = patternShowStartCustomShow.matcher(line);
+			if (m.find()) {
+				isCustomShow = true;
+				return;
+			}
 			m = patternShowName.matcher(line);
 			if (m.find()) {
 				String showName = m.group(1);
-				Core.getCurrentMatch().name = showName;
+				Core.currentMatch.name = showName;
+				System.out.println("SHOW NAME UPDATED: " + showName);
 				listener.showUpdated();
-				break;
+				return;
 			}
 			if (line.contains("isFinalRound=")) {
 				isFinal = line.contains("isFinalRound=True");
-				break;
+				return;
 			}
 			m = patternRoundName.matcher(line);
 			if (m.find()) {
 				String roundName = m.group(1);
-				long frame = Long.parseUnsignedLong(m.group(2)); // FIXME: round id のほうが適切
-				Core.addRound(new Round(roundName, frame, isFinal, Core.getCurrentMatch()));
-				r = Core.getCurrentRound();
-				System.out.println("DETECT STARTING " + roundName + " frame=" + frame);
+				//long frame = Long.parseUnsignedLong(m.group(2)); // FIXME: round id のほうが適切
+				Core.addRound(new Round(roundName, Core.currentMatch.rounds.size(), getTime(line), isFinal,
+						Core.currentMatch));
+				r = Core.currentRound;
+				System.out.println("DETECT STARTING " + roundName);
 				//readState = ReadState.MEMBER_DETECTING;
+				return;
 			}
 			m = patternLoadedRound.matcher(line);
 			if (m.find()) {
@@ -1192,8 +1881,9 @@ class FGReader extends TailerListenerAdapter {
 				r.roundName2 = roundName2;
 				System.out.println("DETECT STARTING " + roundName2);
 				readState = ReadState.MEMBER_DETECTING;
+				return;
 			}
-			break;
+			return;
 		case MEMBER_DETECTING: // join detection
 			// 本来 playerId, name が先に検出されるべきだが、playerId, objectId が先に出力されうるためどちらが先でも対応できるようにする。
 			m = patternPlayerObjectId.matcher(line);
@@ -1207,9 +1897,9 @@ class FGReader extends TailerListenerAdapter {
 				}
 				p.objectId = playerObjectId;
 				// System.out.println("playerId=" + playerId + " objectId=" + playerObjectId);
-				break;
+				return;
 			}
-			m = patternPlayerSpawn.matcher(line);
+			m = patternPlayerSpawned.matcher(line);
 			if (m.find()) {
 				String name = m.group(1);
 				String platform = m.group(2);
@@ -1231,7 +1921,7 @@ class FGReader extends TailerListenerAdapter {
 				if (r.myPlayerId == p.id) {
 					p.name = "YOU";
 					r.add(p);
-					Core.myName = p.name;
+					//Core.myName = p.name;
 				}
 
 				System.out.println(r.byId.size() + " Player " + playerName + " (id=" + playerId
@@ -1241,7 +1931,7 @@ class FGReader extends TailerListenerAdapter {
 				// if (Core.myName.equals(p.name))
 				if (r.myPlayerId == p.id)
 					myObjectId = p.objectId;
-				break;
+				return;
 			}
 			// こちらで取れる名前は旧名称だった…
 			/* この行での名前出力がなくなっていた
@@ -1259,14 +1949,21 @@ class FGReader extends TailerListenerAdapter {
 						Core.myName = p.name;
 				}
 				r.add(p);
-				break;
+				return;
 			}
 			*/
 			if (line.contains("[StateGameLoading] Starting the game.")) {
 				listener.roundStarted();
+				return;
 			}
 			if (line.contains("[GameSession] Changing state from Countdown to Playing")) {
+				// start を書き換える前のエントリを除去
+				synchronized (Core.listLock) {
+					Core.rounds.remove(r);
+					Core.currentMatch.rounds.remove(r);
+				}
 				r.start = getTime(line);
+				Core.addRound(r); // 再add
 				topObjectId = 0;
 				listener.roundStarted();
 				qualifiedCount = eliminatedCount = 0; // reset
@@ -1276,7 +1973,7 @@ class FGReader extends TailerListenerAdapter {
 					survivalScoreTimer.scheduleAtFixedRate(new TimerTask() {
 						@Override
 						public void run() {
-							for (Player p : Core.getCurrentRound().byId.values()) {
+							for (Player p : Core.currentRound.byId.values()) {
 								if (p.qualified == null)
 									p.score += 1;
 							}
@@ -1284,16 +1981,16 @@ class FGReader extends TailerListenerAdapter {
 						}
 					}, 1000, 1000);
 				}
-				break;
+				return;
 			}
 			if (line.contains("[StateMainMenu] Creating or joining lobby")
 					|| line.contains("[StateMatchmaking] Begin matchmaking")) {
 				System.out.println("DETECT BACK TO LOBBY");
 				Core.rounds.remove(Core.rounds.size() - 1); // delete current round
 				readState = ReadState.SHOW_DETECTING;
-				break;
+				return;
 			}
-			break;
+			return;
 		case RESULT_DETECTING: // result detection
 			// score update duaring round
 			m = patternScoreUpdated.matcher(line);
@@ -1308,18 +2005,35 @@ class FGReader extends TailerListenerAdapter {
 						listener.roundUpdated();
 					}
 				}
-				break;
+				return;
+			}
+			m = patternTeamScoreUpdated.matcher(line);
+			if (m.find()) {
+				int teamCount = r.getDef().teamCount;
+				if (teamCount < 2)
+					return;
+				int teamId = Integer.parseUnsignedInt(m.group(1));
+				int score = Integer.parseUnsignedInt(m.group(2));
+				if (r.teamScore == null)
+					r.teamScore = new int[teamCount];
+				r.teamScore[teamId] = score;
+				listener.roundUpdated();
+				return;
 			}
 			// finish time handling
-			if (line.contains("[ClientGameManager] Handling unspawn for player FallGuy ")) {
+			m = patternPlayerUnspawned.matcher(line);
+			if (m.find()) {
+				int objectId = Integer.parseUnsignedInt(m.group(1));
+				Player player = r.getByObjectId(objectId);
+				if (player == null)
+					return;
+				player.finish = getTime(line);
 				if (topObjectId == 0) {
-					topObjectId = Integer
-							.parseInt(line.replaceFirst(".+Handling unspawn for player FallGuy \\[(\\d+)\\].*", "$1"));
-					r.topFinish = getTime(line);
+					topObjectId = objectId;
+					r.topFinish = player.finish;
 				}
-				if (line.contains("[ClientGameManager] Handling unspawn for player FallGuy [" + myObjectId + "] ")) {
-					r.myFinish = getTime(line);
-				}
+				listener.roundUpdated();
+				return;
 			}
 
 			// qualified / eliminated
@@ -1347,18 +2061,9 @@ class FGReader extends TailerListenerAdapter {
 							break;
 						}
 						qualifiedCount += 1;
+						r.qualifiedCount += 1;
 						player.ranking = qualifiedCount;
 						System.out.println("Qualified " + player + " rank=" + player.ranking + " " + player.score);
-
-						// 優勝なら match に勝利数書き込み(squads win 未対応)
-						// if (Core.myName.equals(player.name) && r.isFinal()) {
-						if (r.myPlayerId == player.id && r.isFinal()) {
-							Core.getCurrentMatch().winStreak = 1;
-							List<Match> matches = Core.matches;
-							if (matches.size() > 1)
-								Core.getCurrentMatch().winStreak += matches.get(matches.size() - 2).winStreak;
-						}
-
 					} else {
 						if (topObjectId == player.objectId) {
 							topObjectId = 0; // 切断でも Handling unspawn が出るのでこれを無視して先頭ゴールのみ検出するため
@@ -1370,7 +2075,7 @@ class FGReader extends TailerListenerAdapter {
 					}
 					listener.roundUpdated();
 				}
-				break;
+				return;
 			}
 			// score log
 			// round over より後に出力されている。
@@ -1387,18 +2092,18 @@ class FGReader extends TailerListenerAdapter {
 						player.finalScore = finalScore;
 					}
 				}
-				break;
+				return;
 			}
 			// round end
 			//if (text.contains("[ClientGameManager] Server notifying that the round is over.")
-			if (line.contains(
-					"[GameSession] Changing state from Playing to GameOver")) {
+			if (line.contains("[GameSession] Changing state from Playing to GameOver")) {
 				r.end = getTime(line);
 				if (survivalScoreTimer != null) {
 					survivalScoreTimer.cancel();
 					survivalScoreTimer.purge();
 					survivalScoreTimer = null;
 				}
+				return;
 			}
 			if (line.contains(
 					"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateQualificationScreen")
@@ -1406,22 +2111,32 @@ class FGReader extends TailerListenerAdapter {
 							"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen")) {
 				System.out.println("DETECT END GAME");
 				r.fixed = true;
-				Core.getCurrentMatch().end = getTime(line);
+				// FIXME: teamId 相当が出力されないので誰がどのチームか判定できない。
+				// 仕方ないので勝敗からチームを推測する。これだと２チーム戦しか対応できない。
+				if (r.teamScore != null) {
+					for (Player p : r.byId.values()) {
+						if (r.teamScore[0] >= r.teamScore[1])
+							p.teamId = Boolean.TRUE == p.qualified ? 0 : 1;
+						else
+							p.teamId = Boolean.TRUE == p.qualified ? 1 : 0;
+					}
+				}
+				Core.currentMatch.end = getTime(line);
 				// 優勝画面に行ったらそのラウンドをファイナル扱いとする
 				// final マークがつかないファイナルや、通常ステージで一人生き残り優勝のケースを補填するためだが
 				// 通常ステージでゲーム終了時それをファイナルステージとみなすべきかはスコアリング上微妙ではある。
 				if (line.contains(
-						"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen"))
+						"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen")) {
 					r.isFinal = true;
-				Core.updateStats();
+					Core.currentMatch.finished(getTime(line));
+				}
 				listener.roundDone();
 				readState = ReadState.ROUND_DETECTING;
-				break;
+				return;
 			}
 			if (line.contains("== [CompletedEpisodeDto] ==")) {
 				// 獲得 kudos 他はこの後に続く、決勝完了前に吐くこともあるのでステージ完了ではない。
-
-				break;
+				return;
 			}
 			if (line.contains(
 					"[GameStateMachine] Replacing FGClient.StatePrivateLobby with FGClient.StateMainMenu")
@@ -1436,10 +2151,10 @@ class FGReader extends TailerListenerAdapter {
 					survivalScoreTimer = null;
 				}
 				readState = ReadState.SHOW_DETECTING;
-				Core.getCurrentMatch().end = getTime(line);
-				break;
+				Core.currentMatch.finished(getTime(line));
+				return;
 			}
-			break;
+			return;
 		}
 	}
 }
@@ -1473,14 +2188,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		// default values
 		String v = prop.getProperty("LANGUAGE");
 		Core.LANG = v == null ? Locale.getDefault() : new Locale(v);
-		Core.RES = ResourceBundle.getBundle("res", Core.LANG);
-
-		v = prop.getProperty("POINT_1ST");
-		Core.PT_1ST = v == null ? 4 : Integer.parseInt(v, 10);
-		v = prop.getProperty("POINT_FINALS");
-		Core.PT_FINALS = v == null ? 10 : Integer.parseInt(v, 10);
-		v = prop.getProperty("POINT_WIN");
-		Core.PT_WIN = v == null ? 10 : Integer.parseInt(v, 10);
+		Core.RES = ResourceBundle.getBundle("res", Core.LANG, new UTF8Control());
 
 		v = prop.getProperty("FONT_SIZE_BASE");
 		FONT_SIZE_BASE = v == null ? 12 : Integer.parseInt(v, 10);
@@ -1495,23 +2203,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		Rectangle winRect = new Rectangle(10, 10, 1280, 628);
 		try (ObjectInputStream in = new ObjectInputStream(new FileInputStream("state.dat"))) {
 			winRect = (Rectangle) in.readObject();
-			Core.playerStyles = (Map<String, String>) in.readObject();
 			Core.servers = (Map<String, Map<String, String>>) in.readObject();
-			Core.playerMemos = (Map<String, String>) in.readObject();
 		} catch (IOException ex) {
 		}
-		/*
-		List<Map.Entry<String, String>> list = new ArrayList<Map.Entry<String, String>>(Core.playerStyles.entrySet());
-		for (Map.Entry<String, String> e : list) {
-			String name = e.getKey();
-			if (name == null)
-				continue;
-			if (!name.contains("...")) {
-				String newName = name.replaceFirst("(.{3}).+(.{3})", "$1...$2");
-				Core.playerStyles.put(newName, e.getValue());
-			}
-		}
-		*/
 
 		Core.load();
 
@@ -1520,20 +2214,30 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		frame.setBounds(winRect.x, winRect.y, winRect.width, winRect.height);
 		frame.setTitle("Fall Guys Record");
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+		frame.readLog();
+
 		frame.setVisible(true);
+		Core.started = true;
+		// ad-hoc show initial stats
+		// ラウンド終了検出で更新されるがそれだけだと起動時ログがないときの初期表示がされないのでとりあえず
+		Core.updateStats();
+		Core.updateAchivements();
+		frame.updateRounds();
+		frame.displayStats();
+		frame.achievementPanel.updateDaily();
+
+		reader.start();
 	}
 
-	JLabel myStatLabel;
 	JLabel pingLabel;
-	JList<String> matchSel;
-	JList<String> roundsSel;
+	JTextPane statsArea;
+	AchievementPanel achievementPanel;
+	JList<Match> matchSel;
+	JList<Round> roundsSel;
 	JTextPane roundDetailArea;
-	JTextPane rankingArea;
-	JComboBox<String> rankingSortSel;
-	JComboBox<Integer> rankingFilterSel;
-	JComboBox<Player> playerSel;
-	JComboBox<String> playerStyleSel;
-	JTextField playerMemo;
+	JComboBox<RoundFilter> filterSel;
+	JComboBox<Integer> limitSel;
 	JLabel rankingDescLabel;
 	boolean ignoreSelEvent;
 
@@ -1551,46 +2255,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(200, 20);
 		p.add(label);
-		JLabel totalRankingLabel = label;
+		JLabel statsLabel = label;
 
-		rankingSortSel = new JComboBox<String>();
-		rankingSortSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, rankingSortSel, 10, SpringLayout.EAST, label);
-		l.putConstraint(SpringLayout.NORTH, rankingSortSel, LINE1_Y, SpringLayout.NORTH, p);
-		rankingSortSel.setSize(95, 20);
-		rankingSortSel.addItem(Core.RES.getString("scoreItem"));
-		rankingSortSel.addItem(Core.RES.getString("winItem"));
-		rankingSortSel.addItem(Core.RES.getString("percentageItem"));
-		rankingSortSel.addItemListener(ev -> {
-			displayRanking();
-		});
-		p.add(rankingSortSel);
-
-		rankingFilterSel = new JComboBox<Integer>();
-		rankingFilterSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, rankingFilterSel, 4, SpringLayout.EAST, rankingSortSel);
-		l.putConstraint(SpringLayout.NORTH, rankingFilterSel, LINE1_Y, SpringLayout.NORTH, p);
-		rankingFilterSel.setSize(44, 20);
-		rankingFilterSel.addItem(1);
-		rankingFilterSel.addItem(2);
-		rankingFilterSel.addItem(3);
-		rankingFilterSel.addItem(5);
-		rankingFilterSel.addItem(10);
-		rankingFilterSel.addItem(20);
-		rankingFilterSel.addItem(25);
-		rankingFilterSel.addItem(30);
-		rankingFilterSel.addItemListener(ev -> {
-			displayRanking();
-		});
-		p.add(rankingFilterSel);
-		label = new JLabel(Core.RES.getString("moreThanOneMatch"));
-		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, label, 4, SpringLayout.EAST, rankingFilterSel);
-		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
-		label.setSize(120, 20);
-		p.add(label);
-
-		final int COL2_X = COL1_X + FONT_SIZE_RANK * 25 + 10;
+		final int COL2_X = COL1_X + FONT_SIZE_RANK * 18 + 10;
 		final int COL3_X = COL2_X + 130;
 		final int COL4_X = COL3_X + 160;
 
@@ -1613,95 +2280,29 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		label.setSize(100, 20);
 		p.add(label);
 
-		// under
-		myStatLabel = new JLabel("");
-		myStatLabel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_RANK));
-		l.putConstraint(SpringLayout.WEST, myStatLabel, COL1_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.SOUTH, myStatLabel, -10, SpringLayout.SOUTH, p);
-		myStatLabel.setPreferredSize(new Dimension(FONT_SIZE_RANK * 16, FONT_SIZE_RANK + 10));
-		p.add(myStatLabel);
+		label = new JLabel("v0.3.3");
+		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.EAST, label, -8, SpringLayout.EAST, p);
+		l.putConstraint(SpringLayout.SOUTH, label, -8, SpringLayout.SOUTH, p);
+		p.add(label);
 
+		// under
 		pingLabel = new JLabel("");
 		pingLabel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_RANK));
-		l.putConstraint(SpringLayout.WEST, pingLabel, 40, SpringLayout.EAST, myStatLabel);
-		l.putConstraint(SpringLayout.SOUTH, pingLabel, -10, SpringLayout.SOUTH, p);
+		l.putConstraint(SpringLayout.WEST, pingLabel, 10, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.SOUTH, pingLabel, -4, SpringLayout.SOUTH, p);
 		pingLabel.setPreferredSize(new Dimension(FONT_SIZE_RANK * 60, FONT_SIZE_RANK + 10));
 		p.add(pingLabel);
 
-		JScrollPane scroller;
-		JComboBox<RankingMaker> rankingMakerSel = new JComboBox<RankingMaker>();
-		rankingMakerSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, rankingMakerSel, COL1_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.SOUTH, rankingMakerSel, -10, SpringLayout.NORTH, myStatLabel);
-		rankingMakerSel.setPreferredSize(new Dimension(150, FONT_SIZE_BASE + 8));
-		p.add(rankingMakerSel);
-		rankingMakerSel.addItem(new RankingMaker());
-		rankingMakerSel.addItem(new FeedFirstRankingMaker());
-		rankingMakerSel.addItem(new SquadsRankingMaker());
-		rankingMakerSel.addItem(new FallBallRankingMaker());
-		rankingMakerSel.addItem(new OneOnOneRankingMaker());
-		rankingMakerSel.addItem(new CandyRankingMaker());
-		rankingMakerSel.addItem(new SnipeRankingMaker());
-		rankingMakerSel.addItemListener(ev -> {
-			Core.rankingMaker = (RankingMaker) rankingMakerSel.getSelectedItem();
-			rankingDescLabel.setText(Core.rankingMaker.getDesc());
-			Core.updateStats();
-			displayRanking();
-		});
-		rankingDescLabel = new JLabel(Core.rankingMaker.getDesc());
-		rankingDescLabel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 2));
-		l.putConstraint(SpringLayout.WEST, rankingDescLabel, 10, SpringLayout.EAST, rankingMakerSel);
-		l.putConstraint(SpringLayout.SOUTH, rankingDescLabel, -10, SpringLayout.NORTH, myStatLabel);
-		rankingDescLabel.setPreferredSize(new Dimension(800, FONT_SIZE_BASE + 8));
-		p.add(rankingDescLabel);
-
-		rankingArea = new NoWrapJTextPane();
-		rankingArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_RANK));
-		rankingArea.setMargin(new Insets(8, 8, 8, 8));
-		p.add(scroller = new JScrollPane(rankingArea));
-		l.putConstraint(SpringLayout.WEST, scroller, COL1_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
-		l.putConstraint(SpringLayout.SOUTH, scroller, -10, SpringLayout.NORTH, rankingMakerSel);
-		scroller.setPreferredSize(new Dimension(FONT_SIZE_RANK * 25, 0));
-		JScrollPane rankingAreaScroller = scroller;
-
-		matchSel = new JList<String>(new DefaultListModel<String>());
-		matchSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
-		p.add(scroller = new JScrollPane(matchSel));
-		l.putConstraint(SpringLayout.WEST, scroller, 10, SpringLayout.EAST, rankingAreaScroller);
-		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
-		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
-		scroller.setPreferredSize(new Dimension(120, 0));
-		matchSel.addListSelectionListener((ev) -> {
-			if (ev.getValueIsAdjusting()) {
-				// The user is still manipulating the selection.
-				return;
-			}
-			int index = matchSel.getSelectedIndex();
-			if (index < 0 || index > Core.rounds.size())
-				return;
-			matchSelected(index == 0 ? null : Core.matches.get(index - 1));
-		});
-
-		roundsSel = new JList<String>(new DefaultListModel<String>());
-		roundsSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
-		p.add(scroller = new JScrollPane(roundsSel));
-		l.putConstraint(SpringLayout.WEST, scroller, COL3_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
-		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
-		scroller.setPreferredSize(new Dimension(150, 0));
-		roundsSel.addListSelectionListener((ev) -> {
-			if (ev.getValueIsAdjusting()) {
-				// The user is still manipulating the selection.
-				return;
-			}
-			roundSelected(getSelectedRound());
-		});
-
 		// styles
+		StyledDocument rdoc = new DefaultStyledDocument();
+		Style def = rdoc.getStyle(StyleContext.DEFAULT_STYLE);
+		Style s = rdoc.addStyle("bold", def);
+		StyleConstants.setBold(s, true);
+
 		StyledDocument doc = new DefaultStyledDocument();
-		Style def = doc.getStyle(StyleContext.DEFAULT_STYLE);
-		Style s = doc.addStyle("bold", def);
+		def = doc.getStyle(StyleContext.DEFAULT_STYLE);
+		s = doc.addStyle("bold", def);
 		StyleConstants.setBold(s, true);
 		s = doc.addStyle("underscore", def);
 		StyleConstants.setUnderline(s, true);
@@ -1722,113 +2323,148 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		StyleConstants.setForeground(s, Color.RED);
 		//StyleConstants.setBold(s, true);
 
+		JScrollPane scroller;
+		JComboBox<RankingMaker> rankingMakerSel = new JComboBox<RankingMaker>();
+		rankingMakerSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.WEST, rankingMakerSel, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.SOUTH, rankingMakerSel, -10, SpringLayout.NORTH, pingLabel);
+		rankingMakerSel.setPreferredSize(new Dimension(150, FONT_SIZE_BASE + 8));
+		p.add(rankingMakerSel);
+		rankingMakerSel.addItem(new RankingMaker());
+		rankingMakerSel.addItem(new FeedFirstRankingMaker());
+		rankingMakerSel.addItem(new SquadsRankingMaker());
+		rankingMakerSel.addItem(new FallBallRankingMaker());
+		rankingMakerSel.addItem(new OneOnOneRankingMaker());
+		rankingMakerSel.addItem(new CandyRankingMaker());
+		rankingMakerSel.addItemListener(ev -> {
+			Core.rankingMaker = (RankingMaker) rankingMakerSel.getSelectedItem();
+			rankingDescLabel.setText(Core.rankingMaker.getDesc());
+			Core.updateStats();
+			displayStats();
+		});
+		rankingDescLabel = new JLabel(Core.rankingMaker.getDesc());
+		rankingDescLabel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 2));
+		l.putConstraint(SpringLayout.WEST, rankingDescLabel, 10, SpringLayout.EAST, rankingMakerSel);
+		l.putConstraint(SpringLayout.SOUTH, rankingDescLabel, -10, SpringLayout.NORTH, pingLabel);
+		rankingDescLabel.setPreferredSize(new Dimension(800, FONT_SIZE_BASE + 8));
+		p.add(rankingDescLabel);
+
+		statsArea = new NoWrapJTextPane(rdoc);
+		statsArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_RANK));
+		statsArea.setMargin(new Insets(8, 8, 8, 8));
+		p.add(scroller = new JScrollPane(statsArea));
+		l.putConstraint(SpringLayout.WEST, scroller, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.EAST, scroller, COL2_X - 10, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
+		l.putConstraint(SpringLayout.HEIGHT, scroller, 160, SpringLayout.NORTH, p);
+		JScrollPane statsScroller = scroller;
+
+		filterSel = new JComboBox<RoundFilter>();
+		filterSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.WEST, filterSel, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, filterSel, -120, SpringLayout.SOUTH, p);
+		filterSel.setSize(95, 20);
+		filterSel.addItem(new CurrentSessionRoundFilter());
+		filterSel.addItem(new AllRoundFilter());
+		filterSel.addItemListener(ev -> {
+			Core.filter = (RoundFilter) filterSel.getSelectedItem();
+			Core.updateStats();
+			updateMatches();
+			updateRounds();
+		});
+		p.add(filterSel);
+
+		limitSel = new JComboBox<Integer>();
+		limitSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.WEST, limitSel, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, limitSel, -90, SpringLayout.SOUTH, p);
+		limitSel.setSize(44, 20);
+		limitSel.addItem(0);
+		limitSel.addItem(10);
+		limitSel.addItem(20);
+		limitSel.addItem(50);
+		limitSel.addItem(100);
+		limitSel.addItem(500);
+		limitSel.setSelectedItem(100);
+		limitSel.addItemListener(ev -> {
+			Core.limit = (int) limitSel.getSelectedItem();
+			Core.updateStats();
+			updateMatches();
+			updateRounds();
+		});
+		p.add(limitSel);
+		label = new JLabel(Core.RES.getString("moreThanOneMatch"));
+		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
+		l.putConstraint(SpringLayout.WEST, label, 6, SpringLayout.EAST, limitSel);
+		l.putConstraint(SpringLayout.NORTH, label, 2, SpringLayout.NORTH, limitSel);
+		label.setSize(120, 20);
+		p.add(label);
+
+		achievementPanel = new AchievementPanel();
+		p.add(scroller = new JScrollPane(achievementPanel));
+		l.putConstraint(SpringLayout.WEST, scroller, COL1_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.EAST, scroller, COL2_X - 10, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, 10, SpringLayout.SOUTH, statsScroller);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -150, SpringLayout.SOUTH, p);
+		scroller.setPreferredSize(new Dimension(FONT_SIZE_RANK * 25, 0));
+		// achievements is not supported yet.
+		achievementPanel.setVisible(false);
+
+		matchSel = new JList<Match>(new FastListModel<>());
+		matchSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
+		p.add(scroller = new JScrollPane(matchSel));
+		l.putConstraint(SpringLayout.WEST, scroller, COL2_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
+		scroller.setPreferredSize(new Dimension(120, 0));
+		matchSel.addListSelectionListener((ev) -> {
+			if (ev.getValueIsAdjusting()) {
+				// The user is still manipulating the selection.
+				return;
+			}
+			matchSelected(getSelectedMatch());
+		});
+
+		roundsSel = new JList<Round>(new FastListModel<>());
+		roundsSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
+		p.add(scroller = new JScrollPane(roundsSel));
+		l.putConstraint(SpringLayout.WEST, scroller, COL3_X, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
+		scroller.setPreferredSize(new Dimension(150, 0));
+		roundsSel.addListSelectionListener((ev) -> {
+			if (ev.getValueIsAdjusting()) {
+				// The user is still manipulating the selection.
+				return;
+			}
+			roundSelected(getSelectedRound());
+		});
+
 		roundDetailArea = new NoWrapJTextPane(doc);
 		roundDetailArea.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_DETAIL));
 		roundDetailArea.setMargin(new Insets(8, 8, 8, 8));
 		p.add(scroller = new JScrollPane(roundDetailArea));
 		l.putConstraint(SpringLayout.WEST, scroller, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.EAST, scroller, -10, SpringLayout.EAST, p);
-		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, totalRankingLabel);
-		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
-
-		playerSel = new JComboBox<Player>();
-		playerSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, playerSel, COL2_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.SOUTH, playerSel, -10, SpringLayout.NORTH, rankingMakerSel);
-		playerSel.setPreferredSize(new Dimension(150, FONT_SIZE_BASE + 8));
-		p.add(playerSel);
-		playerSel.addItemListener(new ItemListener() {
-			@Override
-			public void itemStateChanged(ItemEvent e) {
-				Player player = (Player) playerSel.getSelectedItem();
-				if (player == null)
-					return;
-				playerMemo.setText(Core.playerMemos.get(player.name));
-				String before = (String) playerStyleSel.getSelectedItem();
-				String after = Core.playerStyles.get(player.name);
-				if ((before == null && after == null) || (before != null && before.equals(after)))
-					return;
-				ignoreSelEvent = true;
-				playerStyleSel.setSelectedItem(after);
-			}
-		});
-
-		playerStyleSel = new JComboBox<String>();
-		playerStyleSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, playerStyleSel, 10, SpringLayout.EAST, playerSel);
-		l.putConstraint(SpringLayout.NORTH, playerStyleSel, 0, SpringLayout.NORTH, playerSel);
-		playerStyleSel.setPreferredSize(new Dimension(80, FONT_SIZE_BASE + 8));
-		p.add(playerStyleSel);
-		playerStyleSel.addItem("");
-		playerStyleSel.addItem("bold");
-		playerStyleSel.addItem("underscore");
-		playerStyleSel.addItem("green");
-		playerStyleSel.addItem("blue");
-		playerStyleSel.addItem("cyan");
-		playerStyleSel.addItem("magenta");
-		playerStyleSel.addItem("yellow");
-		playerStyleSel.addItem("red");
-		playerStyleSel.addItemListener(new ItemListener() {
-			@Override
-			public void itemStateChanged(ItemEvent e) {
-				if (ignoreSelEvent) {
-					ignoreSelEvent = false;
-					return;
-				}
-				Player player = (Player) playerSel.getSelectedItem();
-				String style = (String) playerStyleSel.getSelectedItem();
-				if (style == null || style.length() == 0)
-					Core.playerStyles.remove(player.name);
-				else
-					Core.playerStyles.put(player.name, style);
-				refreshRoundDetail(getSelectedRound());
-				displayRanking();
-			}
-		});
-
-		playerMemo = new JTextField();
-		playerMemo.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, playerMemo, 10, SpringLayout.EAST, playerStyleSel);
-		l.putConstraint(SpringLayout.NORTH, playerMemo, 0, SpringLayout.NORTH, playerSel);
-		playerMemo.setPreferredSize(new Dimension(80, FONT_SIZE_BASE + 8));
-		p.add(playerMemo);
-		playerMemo.addFocusListener(new FocusAdapter() {
-			@Override
-			public void focusLost(FocusEvent e) {
-				Player player = (Player) playerSel.getSelectedItem();
-				String memo = playerMemo.getText();
-				if (memo == null || memo.length() == 0)
-					Core.playerMemos.remove(player.name);
-				else
-					Core.playerMemos.put(player.name, memo);
-				refreshRoundDetail(getSelectedRound());
-				displayRanking();
-			}
-		});
+		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -60, SpringLayout.NORTH, rankingMakerSel);
 
 		JButton removeMemberFromRoundButton = new JButton(Core.RES.getString("removeMemberFromRoundButton"));
 		removeMemberFromRoundButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, removeMemberFromRoundButton, 10, SpringLayout.EAST, playerMemo);
-		l.putConstraint(SpringLayout.NORTH, removeMemberFromRoundButton, 0, SpringLayout.NORTH, playerSel);
+		l.putConstraint(SpringLayout.WEST, removeMemberFromRoundButton, 0, SpringLayout.WEST, scroller);
+		l.putConstraint(SpringLayout.NORTH, removeMemberFromRoundButton, 10, SpringLayout.SOUTH, scroller);
 		removeMemberFromRoundButton.setPreferredSize(new Dimension(180, FONT_SIZE_BASE + 8));
 		removeMemberFromRoundButton.addActionListener(ev -> removePlayerOnCurrentRound());
 		p.add(removeMemberFromRoundButton);
 
-		JButton removeMemberFromMatchButton = new JButton(Core.RES.getString("removeMemberFromMatchButton"));
-		removeMemberFromMatchButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, removeMemberFromMatchButton, 10, SpringLayout.EAST,
-				removeMemberFromRoundButton);
-		l.putConstraint(SpringLayout.NORTH, removeMemberFromMatchButton, 0, SpringLayout.NORTH, playerSel);
-		removeMemberFromMatchButton.setPreferredSize(new Dimension(170, FONT_SIZE_BASE + 8));
-		removeMemberFromMatchButton.addActionListener(ev -> removePlayerOnCurrentMatch());
-		p.add(removeMemberFromMatchButton);
+		// member operations is not supported yet.
+		removeMemberFromRoundButton.setVisible(false);
 
 		this.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
 				reader.stop();
 				try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream("state.dat"))) {
 					out.writeObject(frame.getBounds());
-					out.writeObject(new HashMap<String, String>()); // これまで playerStyles を保存していたところ
 					out.writeObject(Core.servers);
 				} catch (IOException ex) {
 					ex.printStackTrace();
@@ -1856,22 +2492,39 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				}
 			}
 		});
+	}
 
+	public void readLog() {
 		// start log read
 		reader = new FGReader(
 				new File(FileUtils.getUserDirectory(), "AppData/LocalLow/Mediatonic/FallGuys_client/Player.log"), this);
-		reader.start();
+		readLogInternal(
+				new File(FileUtils.getUserDirectory(), "AppData/LocalLow/Mediatonic/FallGuys_client/Player-prev.log"));
+	}
+
+	void readLogInternal(File log) {
+		try (BufferedReader in = new BufferedReader(
+				new InputStreamReader(new FileInputStream(log), StandardCharsets.UTF_8))) {
+			String line;
+			while ((line = in.readLine()) != null) {
+				reader.handle(line);
+			}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
 	}
 
 	void updateMatches() {
 		int prevSelectedIndex = matchSel.getSelectedIndex();
-		DefaultListModel<String> model = (DefaultListModel<String>) matchSel.getModel();
+		FastListModel<Match> model = (FastListModel<Match>) matchSel.getModel();
 		model.clear();
-		model.addElement("ALL");
+		model.add(new Match(0, "ALL", null, null, false));
 		synchronized (Core.listLock) {
-			for (Match m : Core.matches) {
-				model.addElement(m.name);
+			//for (Match m : Core.matches) {
+			for (Match m : Core.filtered.stream().map(o -> o.match).distinct().collect(Collectors.toList())) {
+				model.add(m);
 			}
+			model.fireAdded();
 			matchSel.setSelectedIndex(prevSelectedIndex <= 0 ? 0 : model.getSize() - 1);
 			matchSel.ensureIndexIsVisible(matchSel.getSelectedIndex());
 		}
@@ -1879,45 +2532,43 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	void updateRounds() {
-		DefaultListModel<String> model = (DefaultListModel<String>) roundsSel.getModel();
+		FastListModel<Round> model = (FastListModel<Round>) roundsSel.getModel();
 		model.clear();
 		synchronized (Core.listLock) {
 			Match m = getSelectedMatch();
-			for (Round r : m == null ? Core.rounds : m.rounds) {
-				RoundDef def = RoundDef.get(r.name);
-				model.addElement(def.getName());
+			for (Round r : m == null ? Core.filtered : m.rounds) {
+				model.add(r);
 			}
+			model.fireAdded();
 			roundsSel.setSelectedIndex(model.size() - 1);
 			roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
-			displayRanking();
+			displayStats();
 		}
 	}
 
 	void matchSelected(Match m) {
-		DefaultListModel<String> model = (DefaultListModel<String>) roundsSel.getModel();
+		FastListModel<Round> model = (FastListModel<Round>) roundsSel.getModel();
 		model.clear();
 		synchronized (Core.listLock) {
-			for (Round r : m == null ? Core.rounds : m.rounds) {
-				RoundDef def = RoundDef.get(r.name);
-				model.addElement(def.getName());
+			for (Round r : m == null ? Core.filtered : m.rounds) {
+				model.add(r);
 			}
+			model.fireAdded();
 		}
 		roundsSel.setSelectedIndex(model.size() - 1);
 		roundsSel.ensureIndexIsVisible(roundsSel.getSelectedIndex());
 		displayFooter();
 	}
 
-	/*
-	private void appendToRanking(String str, String style) {
+	private void appendToStats(String str, String style) {
 		style = style == null ? StyleContext.DEFAULT_STYLE : style;
-		StyledDocument doc = rankingArea.getStyledDocument();
+		StyledDocument doc = statsArea.getStyledDocument();
 		try {
 			doc.insertString(doc.getLength(), str + "\n", doc.getStyle(style));
 		} catch (BadLocationException e) {
 			e.printStackTrace();
 		}
 	}
-	*/
 
 	private void appendToRoundDetail(String str, String style) {
 		style = style == null ? StyleContext.DEFAULT_STYLE : style;
@@ -1930,8 +2581,76 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	}
 
 	void roundSelected(Round r) {
-		updatePlayerSel(r);
+		if (r == null)
+			return;
 		refreshRoundDetail(r);
+	}
+
+	@Override
+	public void showUpdated() {
+		if (!Core.started)
+			return;
+		SwingUtilities.invokeLater(() -> {
+			updateMatches();
+		});
+	}
+
+	@Override
+	public void roundStarted() {
+		if (!Core.started)
+			return;
+		SwingUtilities.invokeLater(() -> {
+			Core.updateStats();
+			updateMatches();
+			updateRounds();
+		});
+	}
+
+	@Override
+	public void roundUpdated() {
+		if (!Core.started)
+			return;
+		SwingUtilities.invokeLater(() -> {
+			if (Core.currentRound == getSelectedRound())
+				refreshRoundDetail(getSelectedRound());
+		});
+	}
+
+	@Override
+	public void roundDone() {
+		if (!Core.started)
+			return;
+		SwingUtilities.invokeLater(() -> {
+			Core.updateStats();
+			Core.updateAchivements();
+			achievementPanel.updateDaily();
+			updateRounds();
+		});
+	}
+
+	Match getSelectedMatch() {
+		Match m = matchSel.getSelectedValue();
+		if (m == null || "ALL".equals(m.name))
+			return null;
+		return m;
+	}
+
+	Round getSelectedRound() {
+		return roundsSel.getSelectedValue();
+	}
+
+	private void removePlayerOnCurrentRound() {
+		Round r = getSelectedRound();
+		Player p = r.getMe();
+		r.disableMe = !r.disableMe;
+		r.playerCount += r.disableMe ? -1 : 1;
+		if (p.isQualified())
+			r.qualifiedCount += r.disableMe ? -1 : 1;
+		//r.playerCountAdd = r.playerCount < 20 ? -r.playerCount % 2 : 0; // デフォルトで20以下奇数時は -1 補正する。
+		updateRounds();
+		Core.updateStats();
+		roundSelected(r);
+		displayStats();
 	}
 
 	void refreshRoundDetail(Round r) {
@@ -1940,25 +2659,22 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			return;
 		}
 		if (r.topFinish != null) {
-			long t = r.topFinish.getTime() - r.start.getTime();
-			if (t < 0)
-				t += 24 * 60 * 60 * 1000;
+			long t = r.getTime(r.topFinish);
 			appendToRoundDetail("TOP: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000), "bold");
 		}
-		if (r.myFinish != null && r.byId.get(r.myPlayerId) != null) {
-			long t = r.myFinish.getTime() - r.start.getTime();
-			if (t < 0)
-				t += 24 * 60 * 60 * 1000;
-			appendToRoundDetail("OWN: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
+		if (r.getMe() != null && r.getMe().finish != null && r.byId.get(r.myPlayerId) != null) {
+			long t = r.getTime(r.getMe().finish);
+			appendToRoundDetail("YOU: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000) + " #" + r.byId.get(r.myPlayerId).ranking, "bold");
 		}
 		if (r.end != null) {
-			long t = r.end.getTime() - r.start.getTime();
-			if (t < 0)
-				t += 24 * 60 * 60 * 1000;
+			long t = r.getTime(r.end);
 			appendToRoundDetail("END: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000), "bold");
+		}
+		if (r.teamScore != null) {
+			appendToRoundDetail(Arrays.toString(r.teamScore), "bold");
 		}
 		if (r.isFinal()) {
 			appendToRoundDetail("********** FINAL **********", "bold");
@@ -1984,120 +2700,57 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 						appendToRoundDetail((r.myPlayerId == p.id ? "★" : p.partyId != 0 ? "p " : "　") + " "
 								+ (p.qualified == null ? "　" : p.qualified ? "○" : "✕") + Core.pad(p.score)
 								+ "pt(" + (p.finalScore < 0 ? "  " : Core.pad(p.finalScore)) + ")" + " " + p,
-								Core.playerStyles.get(p.name));
+								null);
 				}
 				appendToRoundDetail("********** solo rank **********", null);
 			}
-			appendToRoundDetail("rank " + (squads != null ? "sq " : "") + "  score  pt   name", null);
+			appendToRoundDetail("rank " + (squads != null ? "sq " : "") + "  score     time pt   name", null);
 			for (Player p : r.byRank()) {
 				StringBuilder buf = new StringBuilder();
 				buf.append(p.qualified == null ? "　" : p.qualified ? "○" : "✕");
-				buf.append(Core.pad(p.ranking)).append(" ");
+				buf.append(Core.pad(p.ranking));
 				if (squads != null)
-					buf.append(Core.pad(p.squadId)).append(" ");
-				buf.append(Core.pad(p.score)).append("pt(").append(p.finalScore < 0 ? "  " : Core.pad(p.finalScore))
-						.append(")").append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) + " " : "   ");
-				buf.append(r.myPlayerId == p.id ? "★" : "　").append(p);
-				appendToRoundDetail(new String(buf), Core.playerStyles.get(p.name));
+					buf.append(" ").append(Core.pad(p.squadId));
+				buf.append(" ").append(Core.pad(p.score)).append("pt(")
+						.append(p.finalScore < 0 ? "  " : Core.pad(p.finalScore))
+						.append(")");
+				if (p.finish == null)
+					buf.append("        ");
+				else
+					buf.append(" ").append(String.format("%3d", r.getTime(p.finish) / 1000)).append('.')
+							.append(String.format("%03d", r.getTime(p.finish) % 1000));
+				buf.append(" ").append(p.partyId != 0 ? Core.pad(p.partyId) : "  ");
+				buf.append(" ").append(r.myPlayerId == p.id ? "★" : "　").append(p);
+				appendToRoundDetail(new String(buf), null);
 			}
 		}
 		roundDetailArea.setCaretPosition(0);
 	}
 
-	@Override
-	public void showUpdated() {
-		SwingUtilities.invokeLater(() -> {
-			updateMatches();
-		});
-	}
+	void displayStats() {
+		statsArea.setText("");
 
-	@Override
-	public void roundStarted() {
-		SwingUtilities.invokeLater(() -> {
-			updateRounds();
-		});
-	}
+		PlayerStat stat = Core.stat;
+		appendToStats(Core.RES.getString("myStatLabel") + stat.winCount + " / " + stat.participationCount + " ("
+				+ stat.getRate() + "%)", "bold");
+		appendToStats("Total rate: " + stat.totalWinCount + " / " + stat.totalParticipationCount + " ("
+				+ Core.calRate(stat.totalWinCount, stat.totalParticipationCount) + "%)", "bold");
 
-	@Override
-	public void roundUpdated() {
-		if (Core.getCurrentRound() == getSelectedRound())
-			SwingUtilities.invokeLater(() -> {
-				refreshRoundDetail(getSelectedRound());
-			});
-	}
+		/* achievements is not supported yet.
+		int p = stat.totalPoint();
+		appendToStats("Total Points: " + p, "bold");
+		appendToStats("[" + stat.getTitle() + "]", "bold");
 
-	@Override
-	public void roundDone() {
-		SwingUtilities.invokeLater(() -> {
-			updateRounds();
-		});
-	}
-
-	Match getSelectedMatch() {
-		int matchIndex = matchSel.getSelectedIndex();
-		if (matchIndex < 1)
-			return null;
-		synchronized (Core.listLock) {
-			return Core.matches.get(matchIndex - 1);
-		}
-	}
-
-	Round getSelectedRound() {
-		int roundIndex = roundsSel.getSelectedIndex();
-		if (roundIndex < 0)
-			return null;
-		synchronized (Core.listLock) {
-			Match m = getSelectedMatch();
-			if (m == null)
-				return Core.rounds.get(roundIndex);
-			if (m.rounds.size() <= roundIndex)
-				return null;
-			return m.rounds.get(roundIndex);
-		}
-	}
-
-	public void updatePlayerSel(Round r) {
-		playerSel.removeAllItems();
-		if (r == null)
-			return;
-		synchronized (Core.listLock) {
-			for (Player player : r.byId.values()) {
-				FallGuysRecord.frame.playerSel.addItem(player);
+		for (int i = 0; i < Core.titledPoints.length; i += 1) {
+			if (p < Core.titledPoints[i]) {
+				appendToStats("->" + Core.titledPoints[i] + " points", null);
+				appendToStats("[" + Core.titles[i + 1] + "]", null);
+				break;
 			}
 		}
-		//playerSel.setSelectedItem(Core.myName);
-	}
+		*/
 
-	private void removePlayerOnCurrentRound() {
-		Player player = (Player) playerSel.getSelectedItem();
-		Round r = getSelectedRound();
-		r.remove(player.name);
-		Core.updateStats();
-		roundSelected(r);
-		displayRanking();
-	}
-
-	private void removePlayerOnCurrentMatch() {
-		Player player = (Player) playerSel.getSelectedItem();
-		Match m = getSelectedMatch();
-		for (Round r : m == null ? Core.rounds : m.rounds)
-			r.remove(player.name);
-		Core.updateStats();
-		roundSelected(getSelectedRound());
-		displayRanking();
-	}
-
-	void displayRanking() {
-		rankingArea.setText(Core.rankingMaker.getRanking(
-				rankingSortSel.getSelectedIndex(),
-				(Integer) rankingFilterSel.getSelectedItem()));
-		rankingArea.setCaretPosition(0);
-		PlayerStat own = Core.getMyStat();
-		if (own != null)
-			myStatLabel.setText(Core.RES.getString("myStatLabel") + own.winCount + " / " + own.participationCount + " ("
-					+ own.getRate() + "%)");
-		else
-			myStatLabel.setText("");
+		statsArea.setCaretPosition(0);
 	}
 
 	static final SimpleDateFormat f = new SimpleDateFormat("HH:mm:ss", Locale.JAPAN);
@@ -2106,7 +2759,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		String text = "";
 		Match m = getSelectedMatch();
 		if (m == null)
-			m = Core.getCurrentMatch();
+			m = Core.currentMatch;
 		if (m == null)
 			return;
 		if (m.start != null) {
@@ -2122,6 +2775,51 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			text += " " + server.get("country") + " " + server.get("regionName") + " " + server.get("city") + " "
 					+ server.get("timezone");
 		pingLabel.setText(text);
+	}
+}
+
+class AchievementPanel extends JPanel {
+	static Font FONT = new Font(FallGuysRecord.fontFamily, Font.BOLD, 14);
+	Box dailyBox = Box.createVerticalBox();
+
+	AchievementPanel() {
+		super(new BorderLayout());
+		dailyBox.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED),
+				BorderFactory.createEmptyBorder(2, 2, 2, 2)));
+		add(dailyBox, BorderLayout.NORTH);
+		updateDaily();
+
+		Box b = Box.createVerticalBox();
+		//b.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED));
+		add(b, BorderLayout.CENTER);
+		JLabel l = new JLabel("Achivements", SwingConstants.LEFT);
+		l.setFont(FONT);
+		b.add(l);
+		for (Achievement a : Core.achievements) {
+			b.add(a.panel);
+		}
+	}
+
+	@Override
+	public Insets getInsets() {
+		return new Insets(4, 4, 4, 4);
+	}
+
+	static final Color BACKGROUND = new Color(0xffffcc);
+
+	void updateDaily() {
+		dailyBox.removeAll();
+		int today = Core.toDayKey(new Date());
+		JLabel l = new JLabel("Daily Challenges " + (today / 100 % 100 + 1) + "/" + (today % 100), SwingConstants.LEFT);
+		l.setFont(FONT);
+		dailyBox.add(l);
+		for (Achievement a : Core.getChallenges(today)) {
+			dailyBox.add(a.panel);
+			a.panel.setBackground(BACKGROUND);
+			a.panel.setPreferredSize(new Dimension(80, 40));
+		}
+		revalidate();
+		repaint();
 	}
 }
 
@@ -2177,9 +2875,6 @@ class ServerSocketMutex {
 		return false;
 	}
 
-	/**
-	 * ロックを獲得できるまでブロックします。
-	 */
 	public synchronized void lock() {
 		while (true) {
 			if (tryLock())
@@ -2204,5 +2899,69 @@ class ServerSocketMutex {
 		} catch (IOException e) {
 		}
 		ss = null;
+	}
+}
+
+class UTF8Control extends Control {
+	public ResourceBundle newBundle(String baseName, Locale locale, String format, ClassLoader loader, boolean reload)
+			throws IllegalAccessException, InstantiationException, IOException {
+		// The below is a copy of the default implementation.
+		String bundleName = toBundleName(baseName, locale);
+		String resourceName = toResourceName(bundleName, "properties");
+		ResourceBundle bundle = null;
+		InputStream stream = null;
+		if (reload) {
+			URL url = loader.getResource(resourceName);
+			if (url != null) {
+				URLConnection connection = url.openConnection();
+				if (connection != null) {
+					connection.setUseCaches(false);
+					stream = connection.getInputStream();
+				}
+			}
+		} else {
+			stream = loader.getResourceAsStream(resourceName);
+		}
+		if (stream != null) {
+			try {
+				// Only this line is changed to make it to read properties files as UTF-8.
+				bundle = new PropertyResourceBundle(new InputStreamReader(stream, "UTF-8"));
+			} finally {
+				stream.close();
+			}
+		}
+		return bundle;
+	}
+}
+
+class FastListModel<E> extends AbstractListModel<E> {
+	protected ArrayList<E> delegate = new ArrayList<>();
+
+	public int getSize() {
+		return delegate.size();
+	}
+
+	public E getElementAt(int index) {
+		return delegate.get(index);
+	}
+
+	public int size() {
+		return delegate.size();
+	}
+
+	public void add(E element) {
+		delegate.add(element);
+	}
+
+	public void fireAdded() {
+		fireIntervalAdded(this, 0, size());
+	}
+
+	public void clear() {
+		int index1 = delegate.size() - 1;
+		delegate.clear();
+		if (index1 >= 0) {
+			fireIntervalRemoved(this, 0, index1);
+		}
 	}
 }
