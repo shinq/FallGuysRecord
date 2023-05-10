@@ -1,9 +1,7 @@
-import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.Graphics;
 import java.awt.Insets;
 import java.awt.Rectangle;
 import java.awt.event.WindowAdapter;
@@ -48,7 +46,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.PropertyResourceBundle;
-import java.util.Random;
 import java.util.ResourceBundle;
 import java.util.ResourceBundle.Control;
 import java.util.Set;
@@ -60,21 +57,15 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.swing.AbstractListModel;
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
-import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextPane;
 import javax.swing.SpringLayout;
-import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
-import javax.swing.border.BevelBorder;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultStyledDocument;
 import javax.swing.text.Style;
@@ -92,14 +83,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 // 集計後のプレイヤーごと
 // もともと全プレイヤーの情報を収集できるデザインだったが、今は実質自分のみ。
 class PlayerStat {
-	int totalScore;
 	int participationCount; // rate 分母(今回log分)。round または match 数。RankingMaker による。
 	int winCount; // rate 分子(今回log分)。優勝やクリアなど。RankingMaker による。
 	int totalParticipationCount; // rate 分母。round または match 数。RankingMaker による。
 	int totalWinCount; // rate 分子。優勝やクリアなど。RankingMaker による。
-	int totalAchievementPoint;
-	int totalDailyPoint; // weekly 含む
-	int todayDailyPoint;
 
 	Map<String, String> additional = new HashMap<String, String>(); // 独自の統計を使う場合用領域
 
@@ -116,34 +103,18 @@ class PlayerStat {
 		return 0;
 	}
 
-	public boolean setWin(Round r, boolean win, int score) {
+	public boolean setWin(Round r, boolean win) {
 		if (win) {
 			if (r.match.isCurrentSession())
 				winCount += 1;
 			totalWinCount += 1;
-			totalScore += score;
 		} else {
 		}
 		return win;
 	}
 
 	public void reset() {
-		totalScore = totalParticipationCount = totalWinCount = participationCount = winCount = 0;
-	}
-
-	public int totalPoint() {
-		return totalAchievementPoint + totalDailyPoint + todayDailyPoint;
-	}
-
-	public String getTitle() {
-		int p = totalPoint();
-		int i = 0;
-		for (; i < Core.titledPoints.length; i += 1) {
-			if (p < Core.titledPoints[i]) {
-				return Core.titles[i];
-			}
-		}
-		return Core.titles[i];
+		totalParticipationCount = totalWinCount = participationCount = winCount = 0;
 	}
 }
 
@@ -224,7 +195,6 @@ class Round implements Comparable<Round> {
 	Date start;
 	Date end;
 	Date topFinish;
-	//Date myFinish;
 	int myPlayerId;
 	int[] teamScore;
 	int playerCount;
@@ -709,230 +679,6 @@ class RoundDef {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-// Core.rounds をもとに実績達成判定
-// 一つの実績に複数の達成状態と付与ポイントを保持可能とする。
-class GraphPanel extends JPanel {
-	int currentValue;
-	int[] threasholds;
-
-	@Override
-	public Dimension getPreferredSize() {
-		return new Dimension(100, 20);
-	}
-
-	@Override
-	public void paint(Graphics g) {
-		if (threasholds == null)
-			return;
-		int w = getWidth(), h = getHeight();
-		int max = threasholds[threasholds.length - 1];
-		g.clearRect(0, 0, w, h);
-		g.setColor(Color.RED);
-		g.fillRect(1, 1, (w - 2) * currentValue / max, h - 2);
-		g.setColor(Color.BLUE);
-		for (int x : threasholds) {
-			if (x == max)
-				break;
-			int xx = (w - 2) * x / max + 1;
-			g.drawLine(xx, 1, xx, h - 2);
-		}
-		g.setColor(Color.BLACK);
-		g.drawRect(0, 0, w - 1, h - 1);
-	}
-}
-
-abstract class Achievement {
-	int currentValue;
-	int myPoint;
-	int[] threasholds;
-	int[] points;
-	JPanel panel = new JPanel(new BorderLayout());
-	JLabel label = new JLabel();
-	GraphPanel progressGraph = new GraphPanel();
-	JLabel progressLabel = new JLabel();
-
-	{
-		panel.add(label, BorderLayout.NORTH);
-		panel.add(progressGraph, BorderLayout.CENTER);
-		panel.add(progressLabel, BorderLayout.EAST);
-	}
-
-	public void update(int dayKey) {
-		calcCurrentValue(dayKey);
-		myPoint = 0;
-		for (int i = 0; i < threasholds.length; i += 1)
-			if (currentValue >= threasholds[i])
-				myPoint += points[i];
-		int max = threasholds[threasholds.length - 1];
-		//if (currentValue > max) currentValue = max;
-		progressGraph.currentValue = currentValue < max ? currentValue : max;
-		progressGraph.threasholds = threasholds;
-		progressGraph.repaint();
-		label.setText(toString());
-		progressLabel.setText(
-				currentValue + "/" + max + " (" + Core.calRate(currentValue < max ? currentValue : max, max) + "%)");
-		StringBuilder buf = new StringBuilder();
-		buf.append("<html>");
-		for (int i = 0; i < threasholds.length; i += 1) {
-			if (currentValue >= threasholds[i])
-				buf.append(threasholds[i] + "/" + threasholds[i] + " = " + points[i] + "pt GET!<br>");
-			else
-				buf.append(currentValue + "/" + threasholds[i] + " = " + points[i] + "pt<br>");
-		}
-		buf.append("</html>");
-		panel.setToolTipText(new String(buf));
-	}
-
-	public abstract void calcCurrentValue(int dayKey);
-
-	public abstract String getName();
-
-	@Override
-	public String toString() {
-		return getName() + "(" + points[points.length - 1] + ")";
-	}
-}
-
-class RoundCountAchievement extends Achievement {
-	public RoundCountAchievement(int[] threasholds, int[] points) {
-		this.threasholds = threasholds;
-		this.points = points;
-	}
-
-	@Override
-	public void calcCurrentValue(int dayKey) {
-		currentValue = Core.filter(r -> r.isEnabled() && (dayKey == 0 || r.isDate(dayKey))).size();
-	}
-
-	@Override
-	public String getName() {
-		return "Rounds played";
-	}
-}
-
-class WinCountAchievement extends Achievement {
-	boolean solo;
-
-	public WinCountAchievement(int[] threasholds, int[] points, boolean solo) {
-		this.threasholds = threasholds;
-		this.points = points;
-		this.solo = solo;
-	}
-
-	@Override
-	public void calcCurrentValue(int dayKey) {
-		currentValue = 0;
-		for (Match m : Core.matches) {
-			if (!m.isWin())
-				continue;
-			if (solo && !m.isMainShow())
-				continue;
-			if (dayKey > 0 && !m.isDate(dayKey))
-				continue;
-			currentValue += 1;
-		}
-	}
-
-	@Override
-	public String getName() {
-		return "Wins" + (solo ? " at solo show" : "");
-	}
-}
-
-class StreakAchievement extends Achievement {
-	int targetStreak;
-
-	public StreakAchievement(int[] threasholds, int[] points, int streak) {
-		this.threasholds = threasholds;
-		this.points = points;
-		this.targetStreak = streak;
-	}
-
-	@Override
-	public void calcCurrentValue(int dayKey) {
-		currentValue = 0;
-		int streak = 0;
-		for (Match m : Core.matches) {
-			if (m.isWin()) {
-				streak += 1;
-				if (targetStreak == streak)
-					currentValue += 1;
-			} else
-				streak = 0;
-		}
-	}
-
-	@Override
-	public String getName() {
-		return targetStreak + " wins streak";
-	}
-}
-
-class RateAchievement extends Achievement {
-	double targetRate;
-	int limit;
-
-	public RateAchievement(int[] threasholds, int[] points, double rate, int limit) {
-		this.threasholds = threasholds;
-		this.points = points;
-		this.targetRate = rate;
-		this.limit = limit;
-	}
-
-	@Override
-	public void calcCurrentValue(int dayKey) {
-		currentValue = 0;
-		int winCount = 0;
-		List<Round> filtered = Core.filter(r -> r.isEnabled());
-		if (filtered.size() < limit)
-			return;
-		Set<Match> matches = new HashSet<>();
-		for (Round r : filtered) {
-			matches.add(r.match);
-		}
-		List<Match> targetMatches = new ArrayList<>();
-		for (Match m : matches) {
-			winCount += m.isWin() ? 1 : 0;
-			if (targetMatches.size() > limit) {
-				Match o = targetMatches.remove(0);
-				winCount -= o.isWin() ? 1 : 0;
-			}
-			if (targetMatches.size() >= limit) {
-				double rate = Core.calRate(winCount, targetMatches.size());
-				if (rate >= targetRate)
-					currentValue += 1;
-			}
-		}
-	}
-
-	@Override
-	public String getName() {
-		return targetRate + "% wins in " + limit + " rounds";
-	}
-}
-
-class TeamWinAchievement extends Achievement {
-	boolean solo;
-
-	public TeamWinAchievement(int[] threasholds, int[] points) {
-		this.threasholds = threasholds;
-		this.points = points;
-		//		this.solo = solo;
-	}
-
-	@Override
-	public void calcCurrentValue(int dayKey) {
-		currentValue = Core.filter(r -> r.isEnabled() && r.getDef().type == RoundType.TEAM && r.isQualified()
-				&& (dayKey == 0 || r.isDate(dayKey))).size();
-	}
-
-	@Override
-	public String getName() {
-		return "Wins" + (solo ? " at solo show" : "");
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
 interface RoundFilter {
 	boolean isEnabled(Round r);
 }
@@ -1013,47 +759,16 @@ class RankingMaker {
 	// default は優勝数/参加マッチ数。final 進出、優勝でポイント加算。
 	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
 		if (r.isFinal()) {
-			stat.totalScore += Core.PT_FINALS;
-			stat.setWin(r, p.isQualified(), Core.PT_WIN);
+			stat.setWin(r, p.isQualified());
 			return;
 		}
 		if (!p.isQualified())
-			stat.setWin(r, false, 0);
+			stat.setWin(r, false);
 	}
 
 	public void calcFinish(PlayerStat stat) {
 		stat.participationCount = Core.getMatchCount(o -> o.match.isCurrentSession());
 		stat.totalParticipationCount = Core.getMatchCount(Core.filter);
-	}
-}
-
-//レース１位時、決勝進出時、優勝時にポイント加算。
-class FeedFirstRankingMaker extends RankingMaker {
-	@Override
-	public String toString() {
-		return "Feed Point";
-	}
-
-	@Override
-	public String getDesc() {
-		return Core.RES.getString("raceHuntDesc");
-	}
-
-	@Override
-	public void calcTotalScore(PlayerStat stat, Player p, Round r) {
-		if (r.isFinal()) {
-			stat.totalScore += Core.PT_FINALS;
-			stat.setWin(r, p.isQualified(), Core.PT_WIN);
-			return;
-		}
-		// 順位に意味のある種目のみ
-		RoundDef def = RoundDef.get(r.name);
-		if (def.type == RoundType.RACE || def.type == RoundType.HUNT_RACE) {
-			if (p.ranking == 1) // 1st
-				stat.totalScore += Core.PT_1ST;
-		}
-		if (!p.isQualified())
-			stat.setWin(r, false, 0);
 	}
 }
 
@@ -1074,18 +789,17 @@ class SquadsRankingMaker extends RankingMaker {
 		if (!r.isSquad())
 			return;
 		if (r.isFinal()) {
-			stat.totalScore += Core.PT_FINALS;
 			// メンバーの誰かに優勝者がいれば優勝とみなす。
 			for (Player member : r.getSquad(p.squadId).members) {
 				if (member.isQualified()) {
-					stat.setWin(r, true, Core.PT_WIN);
+					stat.setWin(r, true);
 					return;
 				}
 			}
 		}
 		// FIXME: スクアッドとしての脱落判定方法。自分が qualidied でなくても通過がありうる。
 		if (!p.isQualified())
-			stat.setWin(r, false, 0);
+			stat.setWin(r, false);
 	}
 
 	@Override
@@ -1115,7 +829,7 @@ class FallBallRankingMaker extends RankingMaker {
 		if (r.match.isCurrentSession())
 			stat.participationCount += 1; // 参加 round 数
 		stat.totalParticipationCount += 1; // 参加 round 数
-		stat.setWin(r, p.isQualified(), 1);
+		stat.setWin(r, p.isQualified());
 	}
 
 	@Override
@@ -1143,7 +857,7 @@ class OneOnOneRankingMaker extends RankingMaker {
 		if (r.match.isCurrentSession())
 			stat.participationCount += 1; // 参加 round 数
 		stat.totalParticipationCount += 1; // 参加 round 数
-		stat.setWin(r, p.isQualified(), 1);
+		stat.setWin(r, p.isQualified());
 	}
 
 	@Override
@@ -1172,7 +886,7 @@ class CandyRankingMaker extends RankingMaker {
 			stat.participationCount += 1; // 参加 round 数
 		stat.totalParticipationCount += 1; // 参加 round 数
 		boolean myResult = p.isQualified();
-		stat.setWin(r, myResult, 1);
+		stat.setWin(r, myResult);
 		if (p.qualified == null)
 			return; // 結果の出ていないものは個別集計から除外する
 		boolean isGuard = false;
@@ -1211,9 +925,6 @@ class CandyRankingMaker extends RankingMaker {
 }
 
 class Core {
-	static int PT_WIN = 10;
-	static int PT_FINALS = 10;
-	static int PT_1ST = 4;
 	static Locale LANG;
 	static ResourceBundle RES;
 	static Object listLock = new Object();
@@ -1282,7 +993,7 @@ class Core {
 
 	//////////////////////////////////////////////////////////////
 	public static RoundFilter filter = new CurrentSessionRoundFilter();
-	public static int limit = 0;
+	public static int limit = 100;
 	public static long currentSession;
 	public static int currentYear;
 	public static int currentMonth;
@@ -1296,53 +1007,12 @@ class Core {
 	public static List<Round> filtered;
 	public static Map<String, Map<String, String>> servers = new HashMap<>();
 	public static final PlayerStat stat = new PlayerStat();
-	public static final List<Achievement> achievements = new ArrayList<>();
-	public static final List<Achievement> dailyChallenges = new ArrayList<>();
-	public static final List<Achievement> weeklyChallenges = new ArrayList<>();
 
 	static final SimpleDateFormat datef = new SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN);
 	static final DateFormat f = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS");
 	static {
 		f.setTimeZone(TimeZone.getTimeZone("UTC"));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 5 }, 10, 30));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 5 }, 20, 30));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 10 }, 30, 30));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 20 }, 40, 30));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 20 }, 50, 30));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 5 }, 10, 50));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 10 }, 20, 50));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 20 }, 30, 50));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 50 }, 40, 50));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 10 }, 20, 100));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 20 }, 30, 100));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 50 }, 40, 100));
-		achievements.add(new RateAchievement(new int[] { 1 }, new int[] { 100 }, 50, 100));
-
-		achievements.add(new RoundCountAchievement(new int[] { 500, 1000, 2500 },
-				new int[] { 5, 5, 5 }));
-		achievements.add(new RoundCountAchievement(
-				new int[] { 5000, 7500, 10000, 12500, 15000, 17500, 20000, 22500, 25000, 27500, 30000 },
-				new int[] { 5, 8, 10, 13, 15, 18, 20, 23, 25, 28, 30 }));
-
-		// wins
-		achievements.add(new WinCountAchievement(new int[] { 500, 1000, 2500 },
-				new int[] { 5, 5, 5 }, false));
-		achievements.add(new WinCountAchievement(new int[] { 5000, 7500, 10000, 12500, 15000, 17500, 20000 },
-				new int[] { 10, 15, 20, 25, 30, 35, 40 }, false));
-		achievements.add(new WinCountAchievement(new int[] { 100, 300, 1000 },
-				new int[] { 5, 10, 50 }, true));
-
-		dailyChallenges.add(new RoundCountAchievement(new int[] { 10 }, new int[] { 1 }));
-		dailyChallenges.add(new RoundCountAchievement(new int[] { 20 }, new int[] { 1 }));
-		dailyChallenges.add(new WinCountAchievement(new int[] { 1 }, new int[] { 1 }, false));
-		dailyChallenges.add(new TeamWinAchievement(new int[] { 1 }, new int[] { 1 }));
-
-		weeklyChallenges.add(new RoundCountAchievement(new int[] { 100 }, new int[] { 5 }));
-		weeklyChallenges.add(new WinCountAchievement(new int[] { 75 }, new int[] { 10 }, false));
 	}
-	static final int[] titledPoints = new int[] { 100, 1000, 3000, 7000, 10000 };
-	static final String[] titles = new String[] { "名もなきフォールボーラー", "さすらいのフォールボーラー", "フォルボジャンキー", "フォルボ地元代表", "フォルボエンペラー",
-			"協会公認フォルボマスター" };
 
 	public static void load() {
 		rounds.clear();
@@ -1546,15 +1216,19 @@ class Core {
 	public static List<Round> filter(RoundFilter f, int limit, boolean cacheUpdate) {
 		List<Round> result = new ArrayList<>();
 		int c = 0;
+		Match prevMatch = null;
 		synchronized (listLock) {
 			for (ListIterator<Round> i = rounds.listIterator(rounds.size()); i.hasPrevious();) {
 				Round r = i.previous();
 				if (f != null && !f.isEnabled(r))
 					continue;
 				result.add(0, r);
-				c += 1;
-				if (limit > 0 && c >= limit)
-					break;
+				if (prevMatch == null || prevMatch != r.match) {
+					prevMatch = r.match;
+					c += 1;
+					if (limit > 0 && c >= limit)
+						break;
+				}
 			}
 		}
 		if (cacheUpdate)
@@ -1568,7 +1242,7 @@ class Core {
 		synchronized (listLock) {
 			stat.reset();
 			for (Round r : filter(filter, limit, true)) {
-				if (!r.fixed || !r.isEnabled() || r.getSubstanceQualifiedCount() == 0)
+				if (/*!r.fixed ||*/ !r.isEnabled() || r.getSubstanceQualifiedCount() == 0)
 					continue;
 
 				// このラウンドの参加者の結果を反映
@@ -1580,50 +1254,6 @@ class Core {
 			}
 			rankingMaker.calcFinish(stat);
 		}
-	}
-
-	public static void updateAchivements() {
-		if (!started)
-			return;
-		SwingUtilities.invokeLater(() -> {
-			synchronized (Core.listLock) {
-				stat.totalAchievementPoint = 0;
-				for (Achievement a : achievements) {
-					a.update(0);
-					stat.totalAchievementPoint += a.myPoint;
-				}
-
-				stat.totalDailyPoint = 0;
-				int currentDayKey = 0;
-				for (Round r : Core.rounds) {
-					int dayKey = Core.toDayKey(r.start);
-					if (currentDayKey == 0 || currentDayKey != dayKey) {
-						currentDayKey = dayKey;
-						for (Achievement a : Core.getChallenges(dayKey)) {
-							a.update(dayKey);
-							stat.totalDailyPoint += a.myPoint;
-						}
-					}
-				}
-				stat.todayDailyPoint = 0;
-				/*
-				for (Achievement a : Core.getChallenges(dayKey)) {
-					a.update(dayKey);
-					stat.todayDailyPoint += a.currentValue;
-				}
-				*/
-			}
-		});
-	}
-
-	public static List<Achievement> getChallenges(int dayKey) {
-		Random random = new Random(dayKey);
-
-		List<Achievement> result = new ArrayList<>(dailyChallenges); // copy
-		Collections.shuffle(result, random);
-		while (result.size() > 3)
-			result.remove(result.size() - 1);
-		return result;
 	}
 
 	static class PlayerComparator implements Comparator<Player> {
@@ -1737,7 +1367,7 @@ class FGReader extends TailerListenerAdapter {
 			"\\[CameraDirector\\] Adding Spectator target (.+) \\((.+)\\) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
 	//static Pattern patternPlayerSpawnFinish = Pattern.compile("\\[ClientGameManager\\] Finalising spawn for player FallGuy \\[(\\d+)\\] (.+) \\((.+)\\) ");
 	static Pattern patternPlayerUnspawned = Pattern
-			.compile("\\[ClientGameManager\\] Handling unspawn for player FallGuy \\[(\\d+)\\]");
+			.compile("\\[ClientGameManager\\] Handling unspawn for player (FallGuy \\[)?(\\d+)\\]?");
 	static Pattern patternScoreUpdated = Pattern.compile("Player (\\d+) score = (\\d+)");
 	static Pattern patternTeamScoreUpdated = Pattern.compile("Team (\\d+) score = (\\d+)");
 	static Pattern patternPlayerResult = Pattern.compile(
@@ -2023,7 +1653,7 @@ class FGReader extends TailerListenerAdapter {
 			// finish time handling
 			m = patternPlayerUnspawned.matcher(line);
 			if (m.find()) {
-				int objectId = Integer.parseUnsignedInt(m.group(1));
+				int objectId = Integer.parseUnsignedInt(m.group(2));
 				Player player = r.getByObjectId(objectId);
 				if (player == null)
 					return;
@@ -2222,17 +1852,14 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		// ad-hoc show initial stats
 		// ラウンド終了検出で更新されるがそれだけだと起動時ログがないときの初期表示がされないのでとりあえず
 		Core.updateStats();
-		Core.updateAchivements();
 		frame.updateRounds();
 		frame.displayStats();
-		frame.achievementPanel.updateDaily();
 
 		reader.start();
 	}
 
 	JLabel pingLabel;
 	JTextPane statsArea;
-	AchievementPanel achievementPanel;
 	JList<Match> matchSel;
 	JList<Round> roundsSel;
 	JTextPane roundDetailArea;
@@ -2280,7 +1907,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		label.setSize(100, 20);
 		p.add(label);
 
-		label = new JLabel("v0.3.3");
+		label = new JLabel("v0.5.0");
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.EAST, label, -8, SpringLayout.EAST, p);
 		l.putConstraint(SpringLayout.SOUTH, label, -8, SpringLayout.SOUTH, p);
@@ -2331,7 +1958,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingMakerSel.setPreferredSize(new Dimension(150, FONT_SIZE_BASE + 8));
 		p.add(rankingMakerSel);
 		rankingMakerSel.addItem(new RankingMaker());
-		rankingMakerSel.addItem(new FeedFirstRankingMaker());
 		rankingMakerSel.addItem(new SquadsRankingMaker());
 		rankingMakerSel.addItem(new FallBallRankingMaker());
 		rankingMakerSel.addItem(new OneOnOneRankingMaker());
@@ -2356,8 +1982,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.WEST, scroller, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.EAST, scroller, COL2_X - 10, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
-		l.putConstraint(SpringLayout.HEIGHT, scroller, 160, SpringLayout.NORTH, p);
-		JScrollPane statsScroller = scroller;
+		l.putConstraint(SpringLayout.HEIGHT, scroller, 150, SpringLayout.NORTH, p);
 
 		filterSel = new JComboBox<RoundFilter>();
 		filterSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
@@ -2393,22 +2018,12 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			updateRounds();
 		});
 		p.add(limitSel);
-		label = new JLabel(Core.RES.getString("moreThanOneMatch"));
+		label = new JLabel(Core.RES.getString("limitMatch"));
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, label, 6, SpringLayout.EAST, limitSel);
 		l.putConstraint(SpringLayout.NORTH, label, 2, SpringLayout.NORTH, limitSel);
 		label.setSize(120, 20);
 		p.add(label);
-
-		achievementPanel = new AchievementPanel();
-		p.add(scroller = new JScrollPane(achievementPanel));
-		l.putConstraint(SpringLayout.WEST, scroller, COL1_X, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.EAST, scroller, COL2_X - 10, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.NORTH, scroller, 10, SpringLayout.SOUTH, statsScroller);
-		l.putConstraint(SpringLayout.SOUTH, scroller, -150, SpringLayout.SOUTH, p);
-		scroller.setPreferredSize(new Dimension(FONT_SIZE_RANK * 25, 0));
-		// achievements is not supported yet.
-		achievementPanel.setVisible(false);
 
 		matchSel = new JList<Match>(new FastListModel<>());
 		matchSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
@@ -2448,17 +2063,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.EAST, scroller, -10, SpringLayout.EAST, p);
 		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
 		l.putConstraint(SpringLayout.SOUTH, scroller, -60, SpringLayout.NORTH, rankingMakerSel);
-
-		JButton removeMemberFromRoundButton = new JButton(Core.RES.getString("removeMemberFromRoundButton"));
-		removeMemberFromRoundButton.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
-		l.putConstraint(SpringLayout.WEST, removeMemberFromRoundButton, 0, SpringLayout.WEST, scroller);
-		l.putConstraint(SpringLayout.NORTH, removeMemberFromRoundButton, 10, SpringLayout.SOUTH, scroller);
-		removeMemberFromRoundButton.setPreferredSize(new Dimension(180, FONT_SIZE_BASE + 8));
-		removeMemberFromRoundButton.addActionListener(ev -> removePlayerOnCurrentRound());
-		p.add(removeMemberFromRoundButton);
-
-		// member operations is not supported yet.
-		removeMemberFromRoundButton.setVisible(false);
 
 		this.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
@@ -2622,8 +2226,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			return;
 		SwingUtilities.invokeLater(() -> {
 			Core.updateStats();
-			Core.updateAchivements();
-			achievementPanel.updateDaily();
 			updateRounds();
 		});
 	}
@@ -2637,20 +2239,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 	Round getSelectedRound() {
 		return roundsSel.getSelectedValue();
-	}
-
-	private void removePlayerOnCurrentRound() {
-		Round r = getSelectedRound();
-		Player p = r.getMe();
-		r.disableMe = !r.disableMe;
-		r.playerCount += r.disableMe ? -1 : 1;
-		if (p.isQualified())
-			r.qualifiedCount += r.disableMe ? -1 : 1;
-		//r.playerCountAdd = r.playerCount < 20 ? -r.playerCount % 2 : 0; // デフォルトで20以下奇数時は -1 補正する。
-		updateRounds();
-		Core.updateStats();
-		roundSelected(r);
-		displayStats();
 	}
 
 	void refreshRoundDetail(Round r) {
@@ -2775,51 +2363,6 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			text += " " + server.get("country") + " " + server.get("regionName") + " " + server.get("city") + " "
 					+ server.get("timezone");
 		pingLabel.setText(text);
-	}
-}
-
-class AchievementPanel extends JPanel {
-	static Font FONT = new Font(FallGuysRecord.fontFamily, Font.BOLD, 14);
-	Box dailyBox = Box.createVerticalBox();
-
-	AchievementPanel() {
-		super(new BorderLayout());
-		dailyBox.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED),
-				BorderFactory.createEmptyBorder(2, 2, 2, 2)));
-		add(dailyBox, BorderLayout.NORTH);
-		updateDaily();
-
-		Box b = Box.createVerticalBox();
-		//b.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED));
-		add(b, BorderLayout.CENTER);
-		JLabel l = new JLabel("Achivements", SwingConstants.LEFT);
-		l.setFont(FONT);
-		b.add(l);
-		for (Achievement a : Core.achievements) {
-			b.add(a.panel);
-		}
-	}
-
-	@Override
-	public Insets getInsets() {
-		return new Insets(4, 4, 4, 4);
-	}
-
-	static final Color BACKGROUND = new Color(0xffffcc);
-
-	void updateDaily() {
-		dailyBox.removeAll();
-		int today = Core.toDayKey(new Date());
-		JLabel l = new JLabel("Daily Challenges " + (today / 100 % 100 + 1) + "/" + (today % 100), SwingConstants.LEFT);
-		l.setFont(FONT);
-		dailyBox.add(l);
-		for (Achievement a : Core.getChallenges(today)) {
-			dailyBox.add(a.panel);
-			a.panel.setBackground(BACKGROUND);
-			a.panel.setPreferredSize(new Dimension(80, 40));
-		}
-		revalidate();
-		repaint();
 	}
 }
 
