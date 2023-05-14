@@ -1907,7 +1907,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		label.setSize(100, 20);
 		p.add(label);
 
-		label = new JLabel("v0.5.0");
+		label = new JLabel("v1.0.1");
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.EAST, label, -8, SpringLayout.EAST, p);
 		l.putConstraint(SpringLayout.SOUTH, label, -8, SpringLayout.SOUTH, p);
@@ -2246,6 +2246,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		if (r == null) {
 			return;
 		}
+		appendToRoundDetail(r.roundName2, "bold");
 		if (r.topFinish != null) {
 			long t = r.getTime(r.topFinish);
 			appendToRoundDetail("TOP: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
