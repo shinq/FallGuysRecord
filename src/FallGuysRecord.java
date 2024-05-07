@@ -484,6 +484,8 @@ class Match {
 	public void finished(Date end) {
 		this.end = end;
 
+		if (rounds.size() == 0)
+			return;
 		// 優勝なら match に勝利数書き込み
 		Round last = rounds.get(rounds.size() - 1);
 		Player p = last.getMe();
@@ -1347,7 +1349,7 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	static Pattern patternDateDetect = Pattern
-			.compile("(\\d\\d\\d\\d-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d)[^ ]* LogEOS \\(Info\\)");
+			.compile(" (\\d\\d/\\d\\d/\\d\\d\\d\\d \\d\\d:\\d\\d:\\d\\d)[^ ]* LogEOS\\(Info\\)");
 	static Pattern patternLaunch = Pattern
 			.compile("\\[FGClient.GlobalInitialisation\\] Active Scene is 'Init'");
 	static Pattern patternServer = Pattern
@@ -1362,10 +1364,13 @@ class FGReader extends TailerListenerAdapter {
 	//	static Pattern patternShow = Pattern
 	//			.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
 	//static Pattern patternMatchStart = Pattern.compile("\\[StateMatchmaking\\] Begin ");
+
 	static Pattern patternRoundName = Pattern.compile(
-			"\\[StateGameLoading\\] Loading game level scene ([^\\s]+) - frame (\\d+)");
+			"\\[RoundLoader\\] LoadGameLevelSceneASync COMPLETE for scene ([^\\s]+) on frame (\\d+)");
 	static Pattern patternLoadedRound = Pattern
 			.compile("\\[StateGameLoading\\] Finished loading game level, assumed to be ([^.]+)\\.");
+	static Pattern patternRoundSeed = Pattern
+			.compile("\\[GameManager\\] Creating with random seed = ([-\\d]+)");
 
 	static Pattern patternLocalPlayerId = Pattern
 			.compile(
@@ -1377,6 +1382,7 @@ class FGReader extends TailerListenerAdapter {
 	//static Pattern patternPlayerSpawnFinish = Pattern.compile("\\[ClientGameManager\\] Finalising spawn for player FallGuy \\[(\\d+)\\] (.+) \\((.+)\\) ");
 	static Pattern patternPlayerUnspawned = Pattern
 			.compile("\\[ClientGameManager\\] Handling unspawn for player (FallGuy \\[)?(\\d+)\\]?");
+
 	static Pattern patternScoreUpdated = Pattern.compile("Player (\\d+) score = (\\d+)");
 	static Pattern patternTeamScoreUpdated = Pattern.compile("Team (\\d+) score = (\\d+)");
 	static Pattern patternPlayerResult = Pattern.compile(
@@ -1385,7 +1391,7 @@ class FGReader extends TailerListenerAdapter {
 	static Pattern patternPlayerResult2 = Pattern.compile(
 			"-playerId:(\\d+) points:(\\d+) isfinal:([^\\s]+) name:");
 
-	static DateFormat date8601Local = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+	static DateFormat dateLocal = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
 	static DateFormat f = new SimpleDateFormat("HH:mm:ss.SSS");
 	static {
 		f.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -1459,7 +1465,7 @@ class FGReader extends TailerListenerAdapter {
 		if (m.find()) {
 			try {
 				Calendar c = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-				c.setTime(date8601Local.parse(m.group(1)));
+				c.setTime(dateLocal.parse(m.group(1)));
 				Core.currentYear = c.get(Calendar.YEAR);
 				Core.currentMonth = c.get(Calendar.MONTH);
 				Core.currentUTCDate = c.get(Calendar.DAY_OF_MONTH);
@@ -1485,7 +1491,7 @@ class FGReader extends TailerListenerAdapter {
 
 			if (match.pingMS == 0) {
 				Core.currentServerIp = ip;
-				backgroundService.submit(new IPChecker(match, listener));
+				backgroundService.execute(new IPChecker(match, listener));
 			}
 			listener.showUpdated();
 			return;
