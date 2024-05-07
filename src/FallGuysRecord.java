@@ -52,6 +52,8 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -215,6 +217,12 @@ class Round implements Comparable<Round> {
 
 	public RoundDef getDef() {
 		return RoundDef.get(name);
+	}
+
+	public String getName() {
+		if (name.startsWith("FallGuy_FraggleBackground"))
+			return roundName2;
+		return RoundDef.get(name).getName();
 	}
 
 	public void add(Player p) {
@@ -411,7 +419,7 @@ class Round implements Comparable<Round> {
 		Player p = getMe();
 		StringBuilder buf = new StringBuilder();
 		if (start == null)
-			return getDef().getName();
+			return getName();
 		buf.append(Core.datef.format(start));
 		if (p != null) {
 			buf.append(" ").append(p.isQualified() ? "○" : "☓");
@@ -437,7 +445,7 @@ class Round implements Comparable<Round> {
 
 	@Override
 	public String toString() {
-		return getDef().getName();
+		return getName();
 	}
 }
 
@@ -1295,6 +1303,8 @@ class FGReader extends TailerListenerAdapter {
 
 	Tailer tailer;
 	Thread thread;
+	ExecutorService backgroundService = Executors.newSingleThreadExecutor();
+	Timer survivalScoreTimer;
 	Listener listener;
 
 	public FGReader(File log, Listener listener) {
@@ -1310,6 +1320,7 @@ class FGReader extends TailerListenerAdapter {
 	public void stop() {
 		tailer.stop();
 		thread.interrupt();
+		backgroundService.shutdown();
 	}
 
 	//////////////////////////////////////////////////////////////////
@@ -1325,8 +1336,6 @@ class FGReader extends TailerListenerAdapter {
 	int eliminatedCount = 0;
 	boolean isFinal = false;
 
-	Timer survivalScoreTimer;
-
 	@Override
 	public void handle(String line) {
 		try {
@@ -1338,7 +1347,7 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	static Pattern patternDateDetect = Pattern
-			.compile("(\\d\\d\\d\\d-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d)[^ ]+ LogEOS\\(Info\\)");
+			.compile("(\\d\\d\\d\\d-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d)[^ ]* LogEOS \\(Info\\)");
 	static Pattern patternLaunch = Pattern
 			.compile("\\[FGClient.GlobalInitialisation\\] Active Scene is 'Init'");
 	static Pattern patternServer = Pattern
@@ -1401,6 +1410,44 @@ class FGReader extends TailerListenerAdapter {
 		return new Date();
 	}
 
+	static class IPChecker extends TimerTask {
+		final Match match;
+		final Listener listener;
+
+		IPChecker(Match match, Listener listener) {
+			this.match = match;
+			this.listener = listener;
+		}
+
+		@Override
+		public void run() {
+			// ping check
+			try {
+				InetAddress address = InetAddress.getByName(match.ip);
+				long now = System.currentTimeMillis();
+				boolean res = address.isReachable(3000);
+				match.pingMS = System.currentTimeMillis() - now;
+				System.out.println("PING " + res + " " + match.pingMS);
+				Map<String, String> server = Core.servers.get(match.ip);
+				if (server == null) {
+					ObjectMapper mapper = new ObjectMapper();
+					JsonNode root = mapper.readTree(new URL("http://ip-api.com/json/" + match.ip));
+					server = new HashMap<String, String>();
+					server.put("country", root.get("country").asText());
+					server.put("regionName", root.get("regionName").asText());
+					server.put("city", root.get("city").asText());
+					server.put("timezone", root.get("timezone").asText());
+					Core.servers.put(match.ip, server);
+				}
+				listener.showUpdated();
+				System.err.println(match.ip + " " + match.pingMS + " " + server.get("timezone") + " "
+						+ server.get("city"));
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
 	private void parseLine(String line) {
 		Round r = Core.currentRound;
 		Matcher m = patternLaunch.matcher(line);
@@ -1438,29 +1485,7 @@ class FGReader extends TailerListenerAdapter {
 
 			if (match.pingMS == 0) {
 				Core.currentServerIp = ip;
-				// ping check
-				try {
-					InetAddress address = InetAddress.getByName(ip);
-					long now = System.currentTimeMillis();
-					boolean res = address.isReachable(3000);
-					match.pingMS = System.currentTimeMillis() - now;
-					System.out.println("PING " + res + " " + match.pingMS);
-					Map<String, String> server = Core.servers.get(ip);
-					if (server == null) {
-						ObjectMapper mapper = new ObjectMapper();
-						JsonNode root = mapper.readTree(new URL("http://ip-api.com/json/" + ip));
-						server = new HashMap<String, String>();
-						server.put("country", root.get("country").asText());
-						server.put("regionName", root.get("regionName").asText());
-						server.put("city", root.get("city").asText());
-						server.put("timezone", root.get("timezone").asText());
-						Core.servers.put(ip, server);
-					}
-					System.err.println(ip + " " + match.pingMS + " " + server.get("timezone") + " "
-							+ server.get("city"));
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
+				backgroundService.submit(new IPChecker(match, listener));
 			}
 			listener.showUpdated();
 			return;
@@ -1599,6 +1624,8 @@ class FGReader extends TailerListenerAdapter {
 				qualifiedCount = eliminatedCount = 0; // reset
 				readState = ReadState.RESULT_DETECTING;
 				if (r.getDef().type == RoundType.SURVIVAL) {
+					if (survivalScoreTimer != null)
+						survivalScoreTimer.cancel();
 					survivalScoreTimer = new Timer();
 					survivalScoreTimer.scheduleAtFixedRate(new TimerTask() {
 						@Override
