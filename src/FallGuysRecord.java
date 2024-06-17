@@ -350,10 +350,10 @@ class Round implements Comparable<Round> {
 			// 非ファイナルラウンドがファイナルとして出現した場合の検査
 			if (roundName2.contains("_non_final"))
 				return false;
-			if (roundName2.endsWith("_final"))
-				return true;
 			if (roundName2.contains("only_finals"))
 				return false;
+			if (roundName2.contains("_final"))
+				return true;
 			if (roundName2.contains("round_robotrampage_arena_2_ss2_show1_03"))
 				return true;
 			if (byId.size() > 8 && roundName2.contains("_survival"))
@@ -391,9 +391,11 @@ class Round implements Comparable<Round> {
 			if (roundName2.matches("round_.+_event_.+")) // walnut event
 				return false;
 		}
+		/*
 		RoundDef def = RoundDef.get(name);
 		if (def != null && def.isFinalNormally) // 通常ファイナルでしかでないステージならファイナルとみなす。
 			return true;
+		*/
 		return false;
 	}
 
@@ -547,7 +549,6 @@ class RoundDef {
 
 	public final String key;
 	public final RoundType type;
-	public final boolean isFinalNormally; // 通常はファイナルとして出現
 	public final int teamCount;
 
 	public RoundDef(String key, RoundType type) {
@@ -566,7 +567,7 @@ class RoundDef {
 	private RoundDef(String key, RoundType type, boolean isFinal, int teamCount) {
 		this.key = key;
 		this.type = type;
-		this.isFinalNormally = isFinal;
+		//this.isFinalNormally = isFinal;
 		this.teamCount = teamCount;
 	}
 
@@ -1445,7 +1446,8 @@ class FGReader extends TailerListenerAdapter {
 					server.put("timezone", root.get("timezone").asText());
 					Core.servers.put(match.ip, server);
 				}
-				listener.showUpdated();
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+					listener.showUpdated();
 				System.err.println(match.ip + " " + match.pingMS + " " + server.get("timezone") + " "
 						+ server.get("city"));
 			} catch (IOException e) {
@@ -1493,7 +1495,8 @@ class FGReader extends TailerListenerAdapter {
 				Core.currentServerIp = ip;
 				backgroundService.execute(new IPChecker(match, listener));
 			}
-			listener.showUpdated();
+			if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+				listener.showUpdated();
 			return;
 		}
 		m = patternLocalPlayerId.matcher(line);
@@ -1517,7 +1520,8 @@ class FGReader extends TailerListenerAdapter {
 			if (m.find()) {
 				String showName = m.group(1);
 				Core.currentMatch.name = showName;
-				System.out.println("SHOW NAME UPDATED: " + showName);
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+					System.out.println("SHOW NAME UPDATED: " + showName);
 				listener.showUpdated();
 				return;
 			}
@@ -1587,7 +1591,8 @@ class FGReader extends TailerListenerAdapter {
 
 				System.out.println(r.byId.size() + " Player " + playerName + " (id=" + playerId
 						+ " squadId=" + squadId + ") spwaned.");
-				listener.roundUpdated();
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+					listener.roundUpdated();
 				// 現在の自分の objectId 更新
 				// if (Core.myName.equals(p.name))
 				if (r.myPlayerId == p.id)
@@ -1614,7 +1619,8 @@ class FGReader extends TailerListenerAdapter {
 			}
 			*/
 			if (line.contains("[StateGameLoading] Starting the game.")) {
-				listener.roundStarted();
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+					listener.roundStarted();
 				return;
 			}
 			if (line.contains("[GameSession] Changing state from Countdown to Playing")) {
@@ -1626,23 +1632,25 @@ class FGReader extends TailerListenerAdapter {
 				r.start = getTime(line);
 				Core.addRound(r); // 再add
 				topObjectId = 0;
-				listener.roundStarted();
 				qualifiedCount = eliminatedCount = 0; // reset
 				readState = ReadState.RESULT_DETECTING;
-				if (r.getDef().type == RoundType.SURVIVAL) {
-					if (survivalScoreTimer != null)
-						survivalScoreTimer.cancel();
-					survivalScoreTimer = new Timer();
-					survivalScoreTimer.scheduleAtFixedRate(new TimerTask() {
-						@Override
-						public void run() {
-							for (Player p : Core.currentRound.byId.values()) {
-								if (p.qualified == null)
-									p.score += 1;
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000) {
+					listener.roundStarted();
+					if (r.getDef().type == RoundType.SURVIVAL) {
+						if (survivalScoreTimer != null)
+							survivalScoreTimer.cancel();
+						survivalScoreTimer = new Timer();
+						survivalScoreTimer.scheduleAtFixedRate(new TimerTask() {
+							@Override
+							public void run() {
+								for (Player p : Core.currentRound.byId.values()) {
+									if (p.qualified == null)
+										p.score += 1;
+								}
+								listener.roundUpdated();
 							}
-							listener.roundUpdated();
-						}
-					}, 1000, 1000);
+						}, 1000, 1000);
+					}
 				}
 				return;
 			}
@@ -1665,7 +1673,8 @@ class FGReader extends TailerListenerAdapter {
 					if (player.score != score) {
 						System.out.println(player + " score " + player.score + " -> " + score);
 						player.score = score;
-						listener.roundUpdated();
+						if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+							listener.roundUpdated();
 					}
 				}
 				return;
@@ -1680,7 +1689,8 @@ class FGReader extends TailerListenerAdapter {
 				if (r.teamScore == null)
 					r.teamScore = new int[teamCount];
 				r.teamScore[teamId] = score;
-				listener.roundUpdated();
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+					listener.roundUpdated();
 				return;
 			}
 			// finish time handling
@@ -1695,7 +1705,8 @@ class FGReader extends TailerListenerAdapter {
 					topObjectId = objectId;
 					r.topFinish = player.finish;
 				}
-				listener.roundUpdated();
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+					listener.roundUpdated();
 				return;
 			}
 
@@ -1736,7 +1747,8 @@ class FGReader extends TailerListenerAdapter {
 						eliminatedCount += 1;
 						System.out.println(player);
 					}
-					listener.roundUpdated();
+					if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+						listener.roundUpdated();
 				}
 				return;
 			}
@@ -1793,7 +1805,8 @@ class FGReader extends TailerListenerAdapter {
 					r.isFinal = true;
 					Core.currentMatch.finished(getTime(line));
 				}
-				listener.roundDone();
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+					listener.roundDone();
 				readState = ReadState.ROUND_DETECTING;
 				return;
 			}
@@ -1940,7 +1953,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		label.setSize(100, 20);
 		p.add(label);
 
-		label = new JLabel("v1.0.1");
+		label = new JLabel("Ver 1.0.3");
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.EAST, label, -8, SpringLayout.EAST, p);
 		l.putConstraint(SpringLayout.SOUTH, label, -8, SpringLayout.SOUTH, p);
