@@ -1446,7 +1446,7 @@ class FGReader extends TailerListenerAdapter {
 					server.put("timezone", root.get("timezone").asText());
 					Core.servers.put(match.ip, server);
 				}
-				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 					listener.showUpdated();
 				System.err.println(match.ip + " " + match.pingMS + " " + server.get("timezone") + " "
 						+ server.get("city"));
@@ -1495,7 +1495,7 @@ class FGReader extends TailerListenerAdapter {
 				Core.currentServerIp = ip;
 				backgroundService.execute(new IPChecker(match, listener));
 			}
-			if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+			if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 				listener.showUpdated();
 			return;
 		}
@@ -1520,7 +1520,7 @@ class FGReader extends TailerListenerAdapter {
 			if (m.find()) {
 				String showName = m.group(1);
 				Core.currentMatch.name = showName;
-				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 					System.out.println("SHOW NAME UPDATED: " + showName);
 				listener.showUpdated();
 				return;
@@ -1591,7 +1591,7 @@ class FGReader extends TailerListenerAdapter {
 
 				System.out.println(r.byId.size() + " Player " + playerName + " (id=" + playerId
 						+ " squadId=" + squadId + ") spwaned.");
-				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 					listener.roundUpdated();
 				// 現在の自分の objectId 更新
 				// if (Core.myName.equals(p.name))
@@ -1619,7 +1619,7 @@ class FGReader extends TailerListenerAdapter {
 			}
 			*/
 			if (line.contains("[StateGameLoading] Starting the game.")) {
-				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 					listener.roundStarted();
 				return;
 			}
@@ -1634,7 +1634,7 @@ class FGReader extends TailerListenerAdapter {
 				topObjectId = 0;
 				qualifiedCount = eliminatedCount = 0; // reset
 				readState = ReadState.RESULT_DETECTING;
-				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000) {
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000) {
 					listener.roundStarted();
 					if (r.getDef().type == RoundType.SURVIVAL) {
 						if (survivalScoreTimer != null)
@@ -1673,7 +1673,7 @@ class FGReader extends TailerListenerAdapter {
 					if (player.score != score) {
 						System.out.println(player + " score " + player.score + " -> " + score);
 						player.score = score;
-						if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+						if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 							listener.roundUpdated();
 					}
 				}
@@ -1689,7 +1689,7 @@ class FGReader extends TailerListenerAdapter {
 				if (r.teamScore == null)
 					r.teamScore = new int[teamCount];
 				r.teamScore[teamId] = score;
-				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 					listener.roundUpdated();
 				return;
 			}
@@ -1705,7 +1705,7 @@ class FGReader extends TailerListenerAdapter {
 					topObjectId = objectId;
 					r.topFinish = player.finish;
 				}
-				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 					listener.roundUpdated();
 				return;
 			}
@@ -1747,7 +1747,7 @@ class FGReader extends TailerListenerAdapter {
 						eliminatedCount += 1;
 						System.out.println(player);
 					}
-					if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+					if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 						listener.roundUpdated();
 				}
 				return;
@@ -1805,7 +1805,7 @@ class FGReader extends TailerListenerAdapter {
 					r.isFinal = true;
 					Core.currentMatch.finished(getTime(line));
 				}
-				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 10 * 60 * 1000)
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 					listener.roundDone();
 				readState = ReadState.ROUND_DETECTING;
 				return;
