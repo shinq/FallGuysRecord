@@ -4,9 +4,15 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Insets;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -17,10 +23,12 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.URL;
@@ -52,22 +60,31 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 
 import javax.swing.AbstractListModel;
+import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
+import javax.swing.JTable;
 import javax.swing.JTextPane;
+import javax.swing.RowSorter;
+import javax.swing.SortOrder;
 import javax.swing.SpringLayout;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.TableModel;
+import javax.swing.table.TableRowSorter;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultStyledDocument;
 import javax.swing.text.Style;
@@ -206,6 +223,9 @@ class Round implements Comparable<Round> {
 	int qualifiedCount;
 	Map<String, Player> byName = new HashMap<String, Player>();
 	Map<Integer, Player> byId = new HashMap<Integer, Player>();
+	// creative
+	String creativeCode;
+	int creativeVersion;
 
 	public Round(String name, int no, Date id, boolean isFinal, Match match) {
 		this.name = name;
@@ -689,6 +709,35 @@ class RoundDef {
 	}
 }
 
+class CreativeMeta {
+	String code;
+	int version;
+	String author;
+	String title;
+	String description;
+	String userTag = ""; // ユーザが指定する想定
+	int userDifficulty; // ユーザが指定する想定の難易度
+	int userScore; // ユーザが指定する想定の評価値
+	String userComment = ""; // ユーザのフリー記入欄
+	int timeLimitSec;
+	int playCount;
+	int likes;
+	int dislikes;
+	long clearMS;
+	Date played; // 初回記録日時
+	Date lastPlayed; // 最終プレイ日時
+
+	@Override
+	public boolean equals(Object o) {
+		return code.equals(((CreativeMeta) o).code);
+	}
+
+	@Override
+	public int hashCode() {
+		return code.hashCode();
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 interface RoundFilter {
 	boolean isEnabled(Round r);
@@ -761,7 +810,7 @@ class RankingMaker {
 	}
 
 	public String getDesc() {
-		return Core.RES.getString("finalWinDesc");
+		return Core.getRes("finalWinDesc");
 	}
 
 	// stat.participationCount / winCount / totalScore を設定する。
@@ -792,7 +841,7 @@ class SquadsRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return Core.RES.getString("squadDesc");
+		return Core.getRes("squadDesc");
 	}
 
 	@Override
@@ -829,7 +878,7 @@ class FallBallRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return Core.RES.getString("fallBallDesc");
+		return Core.getRes("fallBallDesc");
 	}
 
 	@Override
@@ -857,7 +906,7 @@ class OneOnOneRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return Core.RES.getString("1vs1Desc");
+		return Core.getRes("1vs1Desc");
 	}
 
 	@Override
@@ -885,7 +934,7 @@ class CandyRankingMaker extends RankingMaker {
 
 	@Override
 	public String getDesc() {
-		return Core.RES.getString("sweetThievesDesc");
+		return Core.getRes("sweetThievesDesc");
 	}
 
 	@Override
@@ -971,11 +1020,14 @@ class Core {
 
 	public static int[] intArrayFromString(String string) {
 		String[] strings = string.replace("[", "").replace("]", "").split(", ");
-		if (strings.length == 0)
+		if (strings.length < 2)
 			return null;
 		int result[] = new int[strings.length];
 		for (int i = 0; i < result.length; i++) {
-			result[i] = Integer.parseInt(strings[i]);
+			try {
+				result[i] = Integer.parseInt(strings[i]);
+			} catch (NumberFormatException ex) {
+			}
 		}
 		return result;
 	}
@@ -1017,12 +1069,27 @@ class Core {
 	public static Round currentRound;
 	public static List<Round> filtered;
 	public static Map<String, Map<String, String>> servers = new HashMap<>();
+	public static final List<CreativeMeta> creatives = new ArrayList<>(); // master
+	public static final Map<String, CreativeMeta> creativesMap = new HashMap<>(); // index by code
+
+	static void addCreativeMeta(CreativeMeta meta) {
+		if (creativesMap.containsKey(meta.code)) {
+			creatives.remove(meta);
+		}
+		creatives.add(meta);
+		creativesMap.put(meta.code, meta);
+		tableModel.fireTableDataChanged();
+	}
+
 	public static final PlayerStat stat = new PlayerStat();
 
-	static final SimpleDateFormat datef = new SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN);
-	static final DateFormat f = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS");
+	public static final SimpleDateFormat datef = new SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN);
+	public static final DateFormat dateFormatterMin = new SimpleDateFormat("yyyy/MM/dd HH:mm"); // local time
+	public static final DateFormat f = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss.SSS");
+	public static final DateFormat f2 = new SimpleDateFormat("yyyy/MM/dd HH:mm"); // excel あたりに無理やり変えられた場合の補填用
 	static {
 		f.setTimeZone(TimeZone.getTimeZone("UTC"));
+		f2.setTimeZone(TimeZone.getTimeZone("UTC"));
 	}
 
 	public static void load() {
@@ -1032,7 +1099,7 @@ class Core {
 			String line;
 			Match m = null;
 			while ((line = in.readLine()) != null) {
-				String[] d = line.split("\t");
+				String[] d = line.split("\t", -1);
 				if (d.length < 7)
 					continue;
 
@@ -1076,95 +1143,379 @@ class Core {
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
+
+		try (BufferedReader in = new BufferedReader(
+				new InputStreamReader(new FileInputStream("creatives.tsv"), StandardCharsets.UTF_8))) {
+			in.readLine(); // skip first line
+			String line;
+			while ((line = in.readLine()) != null) {
+				String[] d = line.split("\t", -1);
+				CreativeMeta meta = new CreativeMeta();
+				meta.code = d[0];
+				meta.version = Integer.parseInt(d[1]);
+				meta.author = d[2];
+				meta.title = d[3];
+				try {
+					meta.clearMS = Integer.parseInt(d[4]);
+				} catch (NumberFormatException ex) {
+				}
+				meta.userTag = d[5];
+				try {
+					meta.userDifficulty = Integer.parseInt(d[6]);
+				} catch (NumberFormatException ex) {
+				}
+				try {
+					meta.userScore = Integer.parseInt(d[7]);
+				} catch (NumberFormatException ex) {
+				}
+				meta.userComment = d[8];
+				meta.description = d[9];
+				meta.playCount = Integer.parseInt(d[10]);
+				meta.likes = Integer.parseInt(d[11]);
+				meta.dislikes = Integer.parseInt(d[12]);
+				meta.timeLimitSec = Integer.parseInt(d[13]);
+				try {
+					meta.played = f.parse(d[14]);
+				} catch (ParseException ex) {
+					try {
+						meta.played = f2.parse(d[14]);
+					} catch (ParseException ex2) {
+					}
+				}
+				try {
+					meta.played = f.parse(d[15]);
+				} catch (ParseException ex) {
+					try {
+						meta.played = f2.parse(d[15]);
+					} catch (ParseException ex2) {
+					}
+				}
+				addCreativeMeta(meta);
+			}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
 	}
 
+	public static final byte[] BOM = new byte[] { (byte) 0xef, (byte) 0xbb, (byte) 0xbf };
+
 	public static void save() {
+		try {
+			Files.copy(Paths.get("creatives.tsv"), Paths.get("creatives_prev.tsv"),
+					StandardCopyOption.REPLACE_EXISTING);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		try {
+			OutputStream o = new FileOutputStream("creatives.tsv");
+			try (PrintWriter out = new PrintWriter(new OutputStreamWriter(o, StandardCharsets.UTF_8), false)) {
+				o.write(BOM);
+				out.println(
+						"Code\tVersion\tTitle\tClearTime\tTag\tDifficulty\tReview\tComment\tDesc\tPlayCount\tLikes\tDislikes\\tTimeLimit\tRecorded\tLastPlayed");
+				for (CreativeMeta meta : creatives) {
+					out.print(meta.code); // 0
+					out.print("\t");
+					out.print(meta.version); // 1
+					out.print("\t");
+					out.print(meta.author); // 2
+					out.print("\t");
+					out.print(meta.title); // 3
+					out.print("\t");
+					out.print(meta.clearMS); // 4
+					out.print("\t");
+					out.print(meta.userTag); // 5
+					out.print("\t");
+					out.print(meta.userDifficulty); // 6
+					out.print("\t");
+					out.print(meta.userScore); // 7
+					out.print("\t");
+					out.print(meta.userComment); // 8
+					out.print("\t");
+					out.print(meta.description); // 9
+					out.print("\t");
+					out.print(meta.playCount); // 10
+					out.print("\t");
+					out.print(meta.likes); // 11
+					out.print("\t");
+					out.print(meta.dislikes); // 12
+					out.print("\t");
+					out.print(meta.timeLimitSec); // 13
+					out.print("\t");
+					out.print(meta.played == null ? "" : f.format(meta.played)); // 14
+					out.print("\t");
+					out.print(meta.lastPlayed == null ? "" : f.format(meta.lastPlayed)); // 15
+					out.println();
+				}
+			}
+		} catch (IOException ex) {
+			ex.printStackTrace();
+		}
 		try {
 			Files.copy(Paths.get("stats.tsv"), Paths.get("stats_prev.tsv"), StandardCopyOption.REPLACE_EXISTING);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		try (PrintWriter out = new PrintWriter(
-				new OutputStreamWriter(new FileOutputStream("stats.tsv"), StandardCharsets.UTF_8),
-				false)) {
-			out.println(
-					"Type\tStart\tNo\tName\tName2\tFinal\tPlayers\tQualifiedCount\tTime\tQualified\tDisabled\tplayerCoundAdd\tRank\tScore\tFinalScore\tParty\tSquad\tTeam\tTeamScore");
-			Match currentMatch = null;
-			Collections.sort(rounds);
-			for (Round r : rounds) {
-				if (!r.isEnabled())
-					continue;
-				Player p = r.getMe();
-				if (p == null)
-					continue;
-				if (currentMatch == null || !currentMatch.equals(r.match)) {
-					currentMatch = r.match;
-					// write match line
-					out.print("M"); // 0
+		try {
+			OutputStream o = new FileOutputStream("stats.tsv");
+			try (PrintWriter out = new PrintWriter(new OutputStreamWriter(o, StandardCharsets.UTF_8), false)) {
+				o.write(BOM);
+				out.println(
+						"Type\tStart\tNo\tName\tName2\tFinal\tPlayers\tQualifiedCount\tTime\tQualified\tDisabled\tplayerCoundAdd\tRank\tScore\tFinalScore\tParty\tSquad\tTeam\tTeamScore");
+				Match currentMatch = null;
+				Collections.sort(rounds);
+				for (Round r : rounds) {
+					if (!r.isEnabled())
+						continue;
+					Player p = r.getMe();
+					if (p == null)
+						continue;
+					if (currentMatch == null || !currentMatch.equals(r.match)) {
+						currentMatch = r.match;
+						// write match line
+						out.print("M"); // 0
+						out.print("\t");
+						out.print(currentMatch.session); // 1
+						out.print("\t");
+						out.print(f.format(currentMatch.start)); // 2
+						out.print("\t");
+						out.print(currentMatch.name); // 3
+						out.print("\t");
+						out.print(currentMatch.ip); // 4
+						out.print("\t");
+						out.print(currentMatch.pingMS); // 5
+						out.print("\t");
+						out.print(currentMatch.winStreak); // 6
+						out.print("\t");
+						out.print(currentMatch.isCustom); // 7
+						out.println();
+					}
+					out.print("r"); // 0
 					out.print("\t");
-					out.print(currentMatch.session); // 1
+					out.print(f.format(r.start)); // 1
 					out.print("\t");
-					out.print(f.format(currentMatch.start)); // 2
+					out.print(r.no); // 2
 					out.print("\t");
-					out.print(currentMatch.name); // 3
+					out.print(r.name); // 3
 					out.print("\t");
-					out.print(currentMatch.ip); // 4
+					out.print(r.roundName2); // 4
 					out.print("\t");
-					out.print(currentMatch.pingMS); // 5
+					out.print(r.isFinal()); // 5
 					out.print("\t");
-					out.print(currentMatch.winStreak); // 6
+					out.print(r.playerCount); // 6
 					out.print("\t");
-					out.print(currentMatch.isCustom); // 7
+					out.print(r.qualifiedCount); // 7
+					out.print("\t");
+					if (p.finish != null)
+						out.print(r.getTime(p.finish)); // 8
+					else if (r.end != null)
+						out.print(r.getTime(r.end)); // 8
+
+					out.print("\t");
+					out.print(p.isQualified()); // 9
+					out.print("\t");
+					out.print(r.disableMe); // 10
+					out.print("\t");
+					out.print(r.playerCountAdd); // 11
+					out.print("\t");
+					out.print(p.ranking); // 12
+					out.print("\t");
+					out.print(p.score); // 13
+					out.print("\t");
+					out.print(p.finalScore); // 14
+					out.print("\t");
+					out.print(p.partyId); // 15
+					out.print("\t");
+					out.print(p.squadId); // 16
+					out.print("\t");
+					out.print(p.teamId); // 17
+					out.print("\t");
+					if (r.teamScore != null)
+						out.print(Arrays.toString(r.teamScore)); // 18
 					out.println();
 				}
-				out.print("r"); // 0
-				out.print("\t");
-				out.print(f.format(r.start)); // 1
-				out.print("\t");
-				out.print(r.no); // 2
-				out.print("\t");
-				out.print(r.name); // 3
-				out.print("\t");
-				out.print(r.roundName2); // 4
-				out.print("\t");
-				out.print(r.isFinal()); // 5
-				out.print("\t");
-				out.print(r.playerCount); // 6
-				out.print("\t");
-				out.print(r.qualifiedCount); // 7
-				out.print("\t");
-				if (p.finish != null)
-					out.print(r.getTime(p.finish)); // 8
-				else if (r.end != null)
-					out.print(r.getTime(r.end)); // 8
-
-				out.print("\t");
-				out.print(p.isQualified()); // 9
-				out.print("\t");
-				out.print(r.disableMe); // 10
-				out.print("\t");
-				out.print(r.playerCountAdd); // 11
-				out.print("\t");
-				out.print(p.ranking); // 12
-				out.print("\t");
-				out.print(p.score); // 13
-				out.print("\t");
-				out.print(p.finalScore); // 14
-				out.print("\t");
-				out.print(p.partyId); // 15
-				out.print("\t");
-				out.print(p.squadId); // 16
-				out.print("\t");
-				out.print(p.teamId); // 17
-				out.print("\t");
-				if (r.teamScore != null)
-					out.print(Arrays.toString(r.teamScore)); // 18
-				out.println();
 			}
 		} catch (IOException ex) {
 			ex.printStackTrace();
 		}
 	}
+
+	static ObjectMapper mapper = new ObjectMapper();
+
+	@SuppressWarnings("unchecked")
+	public static CreativeMeta retreiveCreativeInfo(String code, int version, boolean force) {
+		try {
+			if (code == null)
+				return null;
+			CreativeMeta meta = Core.creativesMap.get(code);
+			if (meta != null && !force)
+				return meta;
+			URL url = new URL("https://api2.fallguysdb.info/api/creative/" + code + ".json");
+			HttpURLConnection con = (HttpURLConnection) url.openConnection();
+			con.setRequestProperty("User-Agent", "Chrome");
+			con.setRequestProperty("Accept-Encoding", "gzip");
+			System.out.println(url);
+			InputStream in = con.getInputStream();
+			in = new GZIPInputStream(in);
+			ByteArrayOutputStream result = new ByteArrayOutputStream();
+			byte[] buf = new byte[1024];
+			int len;
+			while ((len = in.read(buf)) > 0) {
+				result.write(buf, 0, len);
+			}
+			String jsonStr = new String(result.toByteArray(), StandardCharsets.UTF_8);
+			Map<String, Object> json = mapper.readValue(jsonStr, Map.class);
+			System.out.println(json);
+
+			// generate
+			Map<String, Object> data = (Map<String, Object>) json.get("data");
+			Map<String, Object> snapshot = (Map<String, Object>) data.get("snapshot");
+			Map<String, Object> author = (Map<String, Object>) snapshot.get("author");
+			Map<String, Object> version_metadata = (Map<String, Object>) snapshot.get("version_metadata");
+			Map<String, Object> config = (Map<String, Object>) version_metadata.get("config");
+			Map<String, Object> stats = (Map<String, Object>) snapshot.get("stats");
+			if (meta == null)
+				meta = new CreativeMeta();
+			meta.code = code;
+			meta.version = version;
+			meta.author = (String) ((Map<String, Object>) author.get("name_per_platform")).values().iterator().next();
+			meta.title = (String) version_metadata.get("title");
+			meta.description = (String) version_metadata.get("description");
+			if (config.containsKey("time_limit_seconds")) {
+				meta.timeLimitSec = (Integer) config.get("time_limit_seconds");
+			}
+			meta.playCount = (Integer) stats.get("play_count");
+			meta.likes = (Integer) stats.get("likes");
+			meta.dislikes = (Integer) stats.get("dislikes");
+			Core.addCreativeMeta(meta);
+			return meta;
+		} catch (IOException e) {
+			e.printStackTrace();
+			JOptionPane.showMessageDialog(null, "Error: " + e.getMessage());
+		}
+		return null;
+	}
+
+	public static AbstractTableModel tableModel = new AbstractTableModel() {
+		@Override
+		public int getColumnCount() {
+			return 12;
+		}
+
+		@Override
+		public String getColumnName(int column) {
+			switch (column) {
+			case 0:
+				return "code";
+			case 1:
+				return "author";
+			case 2:
+				return "title";
+			case 3:
+				return "CrearTime";
+			case 4:
+				return "CrearTag";
+			case 5:
+				return "Difficulty";
+			case 6:
+				return "Review";
+			case 7:
+				return "Comment";
+			case 8:
+				return "description";
+			case 9:
+				return "TimeLimit";
+			case 10:
+				return "PlayCount";
+			case 11:
+				return "LastPlayed";
+			}
+			return "UNKNOWN";
+		}
+
+		@Override
+		public java.lang.Class<?> getColumnClass(int columnIndex) {
+			switch (columnIndex) {
+			case 5:
+			case 6:
+				return Integer.class;
+			}
+			return String.class;
+		}
+
+		@Override
+		public Object getValueAt(int rowIndex, int columnIndex) {
+			CreativeMeta meta = Core.creatives.get(rowIndex);
+			switch (columnIndex) {
+			case 0:
+				return meta.code;
+			case 1:
+				return meta.author;
+			case 2:
+				return meta.title;
+			case 3:
+				return meta.clearMS == 0 ? ""
+						: String.format("%02d", meta.clearMS / 60000) + ":"
+								+ String.format("%02d", meta.clearMS / 1000 % 60) + "."
+								+ String.format("%03d", meta.clearMS % 1000);
+			case 4:
+				return meta.userTag;
+			case 5:
+				return meta.userDifficulty == 0 ? null : meta.userDifficulty;
+			case 6:
+				return meta.userScore == 0 ? null : meta.userScore;
+			case 7:
+				return meta.userComment;
+			case 8:
+				return meta.description;
+			case 9:
+				return meta.timeLimitSec == 0 ? null
+						: String.format("%02d", meta.timeLimitSec / 60) + ":"
+								+ String.format("%02d", meta.timeLimitSec % 60);
+			case 10:
+				return String.format("%,d", meta.playCount);
+			case 11:
+				return meta.lastPlayed == null ? null : Core.dateFormatterMin.format(meta.lastPlayed);
+			}
+			return "UNKNOWN";
+		}
+
+		@Override
+		public boolean isCellEditable(int rowIndex, int columnIndex) {
+			switch (columnIndex) {
+			case 4:
+			case 5:
+			case 6:
+			case 7:
+				return true;
+			}
+			return false;
+		}
+
+		@Override
+		public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
+			CreativeMeta meta = Core.creatives.get(rowIndex);
+			switch (columnIndex) {
+			case 4:
+				meta.userTag = aValue.toString();
+				break;
+			case 5:
+				meta.userDifficulty = (Integer) aValue;
+				break;
+			case 6:
+				meta.userScore = (Integer) aValue;
+				break;
+			case 7:
+				meta.userComment = aValue.toString();
+				break;
+			}
+			return;
+		}
+
+		@Override
+		public int getRowCount() {
+			return Core.creatives.size();
+		}
+	};
 
 	// 2000-01-01 の時刻にする
 	static Date normalizedDate(Date d) {
@@ -1306,7 +1657,7 @@ class FGReader extends TailerListenerAdapter {
 
 	Tailer tailer;
 	Thread thread;
-	ExecutorService backgroundService = Executors.newSingleThreadExecutor();
+	ScheduledExecutorService backgroundService = Executors.newSingleThreadScheduledExecutor();
 	Timer survivalScoreTimer;
 	Listener listener;
 
@@ -1332,6 +1683,8 @@ class FGReader extends TailerListenerAdapter {
 	}
 
 	ReadState readState = ReadState.SHOW_DETECTING;
+	String creativeCode; // ラウンド情報より先に読み取られるのでここで一旦保持してラウンド情報構築時にセットする
+	int creativeVersion; // ラウンド情報より先に読み取られるのでここで一旦保持してラウンド情報構築時にセットする
 	boolean isCustomShow = false;
 	int myObjectId = 0;
 	int topObjectId = 0;
@@ -1381,6 +1734,8 @@ class FGReader extends TailerListenerAdapter {
 	static Pattern patternPlayerSpawned = Pattern.compile(
 			"\\[CameraDirector\\] Adding Spectator target (.+) \\((.+)\\) with Party ID: (\\d*)  Squad ID: (\\d+) and playerID: (\\d+)");
 	//static Pattern patternPlayerSpawnFinish = Pattern.compile("\\[ClientGameManager\\] Finalising spawn for player FallGuy \\[(\\d+)\\] (.+) \\((.+)\\) ");
+	static Pattern patternPlayerActive = Pattern.compile(
+			"ClientGameManager::HandleServerPlayerProgress PlayerId=(\\d+) is succeeded=(.+)");
 	static Pattern patternPlayerUnspawned = Pattern
 			.compile("\\[ClientGameManager\\] Handling unspawn for player (FallGuy \\[)?(\\d+)\\]?");
 
@@ -1391,6 +1746,8 @@ class FGReader extends TailerListenerAdapter {
 
 	static Pattern patternPlayerResult2 = Pattern.compile(
 			"-playerId:(\\d+) points:(\\d+) isfinal:([^\\s]+) name:");
+
+	static Pattern patternCreativeCode = Pattern.compile("\\[RoundLoader\\] Load UGC via share code: ([\\d-]+):(\\d+)");
 
 	static DateFormat dateLocal = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
 	static DateFormat f = new SimpleDateFormat("HH:mm:ss.SSS");
@@ -1499,6 +1856,12 @@ class FGReader extends TailerListenerAdapter {
 				listener.showUpdated();
 			return;
 		}
+		m = patternCreativeCode.matcher(line);
+		if (m.find()) {
+			creativeCode = m.group(1);
+			creativeVersion = Integer.parseUnsignedInt(m.group(2));
+			System.out.println(creativeCode + " Version:" + creativeVersion);
+		}
 		m = patternLocalPlayerId.matcher(line);
 		if (m.find()) {
 			r.myPlayerId = Integer.parseUnsignedInt(m.group(2));
@@ -1538,6 +1901,18 @@ class FGReader extends TailerListenerAdapter {
 				r = Core.currentRound;
 				System.out.println("DETECT STARTING " + roundName);
 				//readState = ReadState.MEMBER_DETECTING;
+				r.creativeCode = creativeCode;
+				r.creativeVersion = creativeVersion;
+				if (r.creativeCode != null) {
+					CreativeMeta meta = Core.retreiveCreativeInfo(r.creativeCode, r.creativeVersion, false);
+					if (meta != null) {
+						if (meta.played == null)
+							meta.played = getTime(line);
+						meta.lastPlayed = getTime(line);
+					}
+				}
+				creativeCode = null;
+				creativeVersion = 0;
 				return;
 			}
 			m = patternLoadedRound.matcher(line);
@@ -1618,6 +1993,21 @@ class FGReader extends TailerListenerAdapter {
 				return;
 			}
 			*/
+			// player spwan succeeded
+			m = patternPlayerActive.matcher(line);
+			if (m.find()) {
+				if ("True".equals(m.group(2)))
+					return;
+				int playerId = Integer.parseUnsignedInt(m.group(1));
+				Player player = r.byId.get(playerId);
+				if (player == null)
+					return;
+				System.out.println("missing player " + player);
+				player.qualified = false;
+				//player.finish = getTime(line);
+				return;
+			}
+
 			if (line.contains("[StateGameLoading] Starting the game.")) {
 				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
 					listener.roundStarted();
@@ -1738,6 +2128,16 @@ class FGReader extends TailerListenerAdapter {
 						r.qualifiedCount += 1;
 						player.ranking = qualifiedCount;
 						System.out.println("Qualified " + player + " rank=" + player.ranking + " " + player.score);
+						if ("YOU".equals(player.name)) {
+							if (r.creativeCode != null) {
+								CreativeMeta meta = Core.retreiveCreativeInfo(r.creativeCode, r.creativeVersion, false);
+								long time = r.getTime(player.finish);
+								if (meta != null && (meta.clearMS == 0 || meta.clearMS > time)) {
+									meta.clearMS = time;
+									Core.tableModel.fireTableDataChanged();
+								}
+							}
+						}
 					} else {
 						if (topObjectId == player.objectId) {
 							topObjectId = 0; // 切断でも Handling unspawn が出るのでこれを無視して先頭ゴールのみ検出するため
@@ -1843,6 +2243,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 	static ServerSocketMutex mutex = new ServerSocketMutex(29878);
 	static FallGuysRecord frame;
+	static CreativesWindow creativesWindow;
 	static FGReader reader;
 	static String monospacedFontFamily = "MS Gothic";
 	static String fontFamily = "Meiryo UI";
@@ -1877,9 +2278,11 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		System.err.println("FONT_SIZE_RANK=" + FONT_SIZE_RANK);
 		System.err.println("FONT_SIZE_DETAIL=" + FONT_SIZE_DETAIL);
 		Rectangle winRect = new Rectangle(10, 10, 1280, 628);
+		Rectangle creativesWinRect = new Rectangle(10, 10, 1280, 628);
 		try (ObjectInputStream in = new ObjectInputStream(new FileInputStream("state.dat"))) {
 			winRect = (Rectangle) in.readObject();
 			Core.servers = (Map<String, Map<String, String>>) in.readObject();
+			creativesWinRect = (Rectangle) in.readObject();
 		} catch (IOException ex) {
 		}
 
@@ -1887,8 +2290,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		frame = new FallGuysRecord();
 		frame.setResizable(true);
-		frame.setBounds(winRect.x, winRect.y, winRect.width, winRect.height);
-		frame.setTitle("Fall Guys Record");
+		frame.setBounds(winRect);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
 		frame.readLog();
@@ -1902,6 +2304,16 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		frame.displayStats();
 
 		reader.start();
+
+		creativesWindow = new CreativesWindow();
+		creativesWindow.setResizable(true);
+		creativesWindow.setBounds(creativesWinRect);
+		creativesWindow.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
+		creativesWindow.setVisible(true);
+	}
+
+	void showCreativesWindow() {
+		creativesWindow.setVisible(true);
 	}
 
 	JLabel pingLabel;
@@ -1918,11 +2330,12 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 	static final int COL1_X = 10;
 
 	FallGuysRecord() {
+		setTitle("Fall Guys Record");
 		SpringLayout l = new SpringLayout();
 		Container p = getContentPane();
 		p.setLayout(l);
 
-		JLabel label = new JLabel(Core.RES.getString("rankingLabel"));
+		JLabel label = new JLabel(Core.getRes("rankingLabel"));
 		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL1_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
@@ -1934,19 +2347,19 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		final int COL3_X = COL2_X + 130;
 		final int COL4_X = COL3_X + 160;
 
-		label = new JLabel(Core.RES.getString("matchList"));
+		label = new JLabel(Core.getRes("matchList"));
 		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL2_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(100, 20);
 		p.add(label);
-		label = new JLabel(Core.RES.getString("roundList"));
+		label = new JLabel(Core.getRes("roundList"));
 		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL3_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
 		label.setSize(100, 20);
 		p.add(label);
-		label = new JLabel(Core.RES.getString("roundDetails"));
+		label = new JLabel(Core.getRes("roundDetails"));
 		label.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE + 2));
 		l.putConstraint(SpringLayout.WEST, label, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, label, LINE1_Y, SpringLayout.NORTH, p);
@@ -2030,6 +2443,18 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
 		l.putConstraint(SpringLayout.HEIGHT, scroller, 150, SpringLayout.NORTH, p);
 
+		JButton showCreativesButton = new JButton(Core.getRes("ShowCreatives"));
+		showCreativesButton.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_DETAIL));
+		showCreativesButton.setSize(80, 20);
+		p.add(showCreativesButton);
+		l.putConstraint(SpringLayout.WEST, showCreativesButton, COL1_X, SpringLayout.WEST, p);
+		//l.putConstraint(SpringLayout.EAST, showCreativesButton, -10, SpringLayout.EAST, p);
+		l.putConstraint(SpringLayout.NORTH, showCreativesButton, -150, SpringLayout.SOUTH, p);
+		//l.putConstraint(SpringLayout.SOUTH, showCreativesButton, -60, SpringLayout.NORTH, rankingMakerSel);
+		showCreativesButton.addActionListener(ev -> {
+			showCreativesWindow();
+		});
+
 		filterSel = new JComboBox<RoundFilter>();
 		filterSel.setFont(new Font(fontFamily, Font.BOLD, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, filterSel, COL1_X, SpringLayout.WEST, p);
@@ -2064,7 +2489,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			updateRounds();
 		});
 		p.add(limitSel);
-		label = new JLabel(Core.RES.getString("limitMatch"));
+		label = new JLabel(Core.getRes("limitMatch"));
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.WEST, label, 6, SpringLayout.EAST, limitSel);
 		l.putConstraint(SpringLayout.NORTH, label, 2, SpringLayout.NORTH, limitSel);
@@ -2108,7 +2533,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.WEST, scroller, COL4_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.EAST, scroller, -10, SpringLayout.EAST, p);
 		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
-		l.putConstraint(SpringLayout.SOUTH, scroller, -60, SpringLayout.NORTH, rankingMakerSel);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -40, SpringLayout.NORTH, rankingMakerSel);
 
 		this.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
@@ -2116,6 +2541,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream("state.dat"))) {
 					out.writeObject(frame.getBounds());
 					out.writeObject(Core.servers);
+					out.writeObject(creativesWindow.getBounds());
 				} catch (IOException ex) {
 					ex.printStackTrace();
 				}
@@ -2131,6 +2557,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 						count = 0;
 					connected.put(server.get("city"), count + 1);
 				}
+				/*
 				for (String city : connected.keySet()) {
 					System.err.println(city + "\t" + connected.get(city));
 				}
@@ -2140,6 +2567,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 						System.err.println(r.name + "\t" + r.roundName2);
 					}
 				}
+				*/
 			}
 		});
 	}
@@ -2292,7 +2720,20 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		if (r == null) {
 			return;
 		}
+		CreativeMeta meta = Core.retreiveCreativeInfo(r.creativeCode, r.creativeVersion, false);
 		appendToRoundDetail(r.roundName2, "bold");
+		if (r.creativeCode != null) {
+			appendToRoundDetail(r.creativeCode + " v" + r.creativeVersion, "bold");
+			if (meta != null) {
+				appendToRoundDetail(meta.title, null);
+				appendToRoundDetail("TIME LIMIT: " + Core.pad0((int) (meta.timeLimitSec / 60)) + ":"
+						+ String.format("%02d", meta.timeLimitSec % 60), null);
+				if (meta.clearMS > 0)
+					appendToRoundDetail("BEST: " + Core.pad0((int) (meta.clearMS / 60000)) + ":"
+							+ Core.pad0((int) (meta.clearMS % 60000 / 1000))
+							+ "." + String.format("%03d", meta.clearMS % 1000), "bold");
+			}
+		}
 		if (r.topFinish != null) {
 			long t = r.getTime(r.topFinish);
 			appendToRoundDetail("TOP: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
@@ -2359,6 +2800,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				appendToRoundDetail(new String(buf), null);
 			}
 		}
+		if (meta != null)
+			appendToRoundDetail(meta.description, null);
 		roundDetailArea.setCaretPosition(0);
 	}
 
@@ -2366,7 +2809,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		statsArea.setText("");
 
 		PlayerStat stat = Core.stat;
-		appendToStats(Core.RES.getString("myStatLabel") + stat.winCount + " / " + stat.participationCount + " ("
+		appendToStats(Core.getRes("myStatLabel") + stat.winCount + " / " + stat.participationCount + " ("
 				+ stat.getRate() + "%)", "bold");
 		appendToStats("Total rate: " + stat.totalWinCount + " / " + stat.totalParticipationCount + " ("
 				+ Core.calRate(stat.totalWinCount, stat.totalParticipationCount) + "%)", "bold");
@@ -2553,5 +2996,68 @@ class FastListModel<E> extends AbstractListModel<E> {
 		if (index1 >= 0) {
 			fireIntervalRemoved(this, 0, index1);
 		}
+	}
+}
+
+class CreativesWindow extends JFrame {
+	JTable table = new JTable(Core.tableModel);
+
+	public CreativesWindow() {
+		setTitle("Fall Guys Record: Creative Stages");
+		SpringLayout l = new SpringLayout();
+		Container p = getContentPane();
+		p.setLayout(l);
+
+		JLabel desc = new JLabel("left double click=copy code, right double click=reload stage info");
+		p.add(desc);
+		l.putConstraint(SpringLayout.WEST, desc, 10, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.NORTH, desc, 10, SpringLayout.NORTH, p);
+
+		JScrollPane scroller = new JScrollPane(table);
+		p.add(scroller);
+		table.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE + 2));
+		l.putConstraint(SpringLayout.WEST, scroller, 10, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.EAST, scroller, -10, SpringLayout.EAST, p);
+		l.putConstraint(SpringLayout.NORTH, scroller, 10, SpringLayout.SOUTH, desc);
+		l.putConstraint(SpringLayout.SOUTH, scroller, -10, SpringLayout.SOUTH, p);
+
+		table.setRowSorter(new TableRowSorter<TableModel>(Core.tableModel));
+		table.getRowSorter().setSortKeys(Collections.singletonList(new RowSorter.SortKey(11, SortOrder.DESCENDING)));
+		table.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent ev) {
+				if (ev.getClickCount() < 2)
+					return;
+				int index = table.rowAtPoint(ev.getPoint());
+				if (index < 0)
+					return;
+				int row = table.convertRowIndexToModel(index);
+				CreativeMeta meta = Core.creatives.get(row);
+
+				if (ev.getButton() == 1) {
+					Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+					clipboard.setContents(new StringSelection(meta.code), null);
+				} else if (ev.getButton() == 3) {
+					Core.retreiveCreativeInfo(meta.code, meta.version, true);
+				}
+			}
+		});
+
+		table.getColumnModel().getColumn(0).setMinWidth(124);
+		table.getColumnModel().getColumn(0).setMaxWidth(124);
+		table.getColumnModel().getColumn(3).setMinWidth(80);
+		table.getColumnModel().getColumn(3).setMaxWidth(84);
+		table.getColumnModel().getColumn(5).setMaxWidth(30);
+		table.getColumnModel().getColumn(6).setMaxWidth(30);
+		table.getColumnModel().getColumn(9).setMaxWidth(48);
+
+		JButton b = new JButton(Core.getRes("refresh"));
+		b.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE + 2));
+		p.add(b);
+		l.putConstraint(SpringLayout.EAST, b, 0, SpringLayout.EAST, p);
+		l.putConstraint(SpringLayout.NORTH, b, 0, SpringLayout.NORTH, p);
+		b.addActionListener(ev -> {
+			Core.tableModel.fireTableDataChanged();
+		});
 	}
 }
