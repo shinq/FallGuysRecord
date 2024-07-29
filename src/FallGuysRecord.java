@@ -7,6 +7,8 @@ import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
@@ -48,6 +50,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Locale;
@@ -68,6 +71,7 @@ import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
 import javax.swing.AbstractListModel;
+import javax.swing.DefaultCellEditor;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
@@ -76,13 +80,16 @@ import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextField;
 import javax.swing.JTextPane;
-import javax.swing.RowSorter;
+import javax.swing.RowSorter.SortKey;
 import javax.swing.SortOrder;
 import javax.swing.SpringLayout;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.table.AbstractTableModel;
+import javax.swing.table.TableColumn;
+import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableModel;
 import javax.swing.table.TableRowSorter;
 import javax.swing.text.BadLocationException;
@@ -715,6 +722,7 @@ class CreativeMeta {
 	String author;
 	String title;
 	String description;
+	String tag;
 	String userTag = ""; // ユーザが指定する想定
 	int userDifficulty; // ユーザが指定する想定の難易度
 	int userScore; // ユーザが指定する想定の評価値
@@ -735,6 +743,11 @@ class CreativeMeta {
 	@Override
 	public int hashCode() {
 		return code.hashCode();
+	}
+
+	@Override
+	public String toString() {
+		return code;
 	}
 }
 
@@ -1069,16 +1082,15 @@ class Core {
 	public static Round currentRound;
 	public static List<Round> filtered;
 	public static Map<String, Map<String, String>> servers = new HashMap<>();
-	public static final List<CreativeMeta> creatives = new ArrayList<>(); // master
+	public static final List<CreativeMeta> creativesList = new ArrayList<>(); // master
 	public static final Map<String, CreativeMeta> creativesMap = new HashMap<>(); // index by code
 
 	static void addCreativeMeta(CreativeMeta meta) {
 		if (creativesMap.containsKey(meta.code)) {
-			creatives.remove(meta);
+			creativesList.remove(meta);
 		}
-		creatives.add(meta);
+		creativesList.add(meta);
 		creativesMap.put(meta.code, meta);
-		tableModel.fireTableDataChanged();
 	}
 
 	public static final PlayerStat stat = new PlayerStat();
@@ -1147,9 +1159,15 @@ class Core {
 		try (BufferedReader in = new BufferedReader(
 				new InputStreamReader(new FileInputStream("creatives.tsv"), StandardCharsets.UTF_8))) {
 			in.readLine(); // skip first line
+			int lineNumber = 1;
 			String line;
 			while ((line = in.readLine()) != null) {
+				lineNumber += 1;
 				String[] d = line.split("\t", -1);
+				if (d.length < 17) {
+					System.err.println("skip line(" + lineNumber + "): " + d);
+					continue;
+				}
 				CreativeMeta meta = new CreativeMeta();
 				meta.code = d[0];
 				meta.version = Integer.parseInt(d[1]);
@@ -1175,21 +1193,14 @@ class Core {
 				meta.dislikes = Integer.parseInt(d[12]);
 				meta.timeLimitSec = Integer.parseInt(d[13]);
 				try {
-					meta.played = f.parse(d[14]);
+					meta.played = dateFormatterMin.parse(d[14]);
 				} catch (ParseException ex) {
-					try {
-						meta.played = f2.parse(d[14]);
-					} catch (ParseException ex2) {
-					}
 				}
 				try {
-					meta.played = f.parse(d[15]);
+					meta.lastPlayed = dateFormatterMin.parse(d[15]);
 				} catch (ParseException ex) {
-					try {
-						meta.played = f2.parse(d[15]);
-					} catch (ParseException ex2) {
-					}
 				}
+				meta.tag = d[16];
 				addCreativeMeta(meta);
 			}
 		} catch (Exception ex) {
@@ -1211,8 +1222,8 @@ class Core {
 			try (PrintWriter out = new PrintWriter(new OutputStreamWriter(o, StandardCharsets.UTF_8), false)) {
 				o.write(BOM);
 				out.println(
-						"Code\tVersion\tTitle\tClearTime\tTag\tDifficulty\tReview\tComment\tDesc\tPlayCount\tLikes\tDislikes\\tTimeLimit\tRecorded\tLastPlayed");
-				for (CreativeMeta meta : creatives) {
+						"Code\tVersion\tAuthor\tTitle\tClearTime\tUserTag\tUserDifficulty\tUserReview\tUserComment\tDesc\tPlayCount\tLikes\tDislikes\tTimeLimit\tRecorded\tLastPlayed\tTag");
+				for (CreativeMeta meta : creativesList) {
 					out.print(meta.code); // 0
 					out.print("\t");
 					out.print(meta.version); // 1
@@ -1241,9 +1252,11 @@ class Core {
 					out.print("\t");
 					out.print(meta.timeLimitSec); // 13
 					out.print("\t");
-					out.print(meta.played == null ? "" : f.format(meta.played)); // 14
+					out.print(meta.played == null ? "" : dateFormatterMin.format(meta.played)); // 14
 					out.print("\t");
-					out.print(meta.lastPlayed == null ? "" : f.format(meta.lastPlayed)); // 15
+					out.print(meta.lastPlayed == null ? "" : dateFormatterMin.format(meta.lastPlayed)); // 15
+					out.print("\t");
+					out.print(meta.tag); // 16
 					out.println();
 				}
 			}
@@ -1378,6 +1391,7 @@ class Core {
 			meta.code = code;
 			meta.version = version;
 			meta.author = (String) ((Map<String, Object>) author.get("name_per_platform")).values().iterator().next();
+			meta.tag = String.join(",", ((List<String>) version_metadata.get("creator_tags")));
 			meta.title = (String) version_metadata.get("title");
 			meta.description = (String) version_metadata.get("description");
 			if (config.containsKey("time_limit_seconds")) {
@@ -1398,7 +1412,7 @@ class Core {
 	public static AbstractTableModel tableModel = new AbstractTableModel() {
 		@Override
 		public int getColumnCount() {
-			return 12;
+			return 13;
 		}
 
 		@Override
@@ -1413,7 +1427,7 @@ class Core {
 			case 3:
 				return "CrearTime";
 			case 4:
-				return "CrearTag";
+				return "UserTag";
 			case 5:
 				return "Difficulty";
 			case 6:
@@ -1428,6 +1442,8 @@ class Core {
 				return "PlayCount";
 			case 11:
 				return "LastPlayed";
+			case 12:
+				return "OfficialTag";
 			}
 			return "UNKNOWN";
 		}
@@ -1437,6 +1453,7 @@ class Core {
 			switch (columnIndex) {
 			case 5:
 			case 6:
+			case 10:
 				return Integer.class;
 			}
 			return String.class;
@@ -1444,7 +1461,7 @@ class Core {
 
 		@Override
 		public Object getValueAt(int rowIndex, int columnIndex) {
-			CreativeMeta meta = Core.creatives.get(rowIndex);
+			CreativeMeta meta = Core.creativesList.get(rowIndex);
 			switch (columnIndex) {
 			case 0:
 				return meta.code;
@@ -1472,9 +1489,11 @@ class Core {
 						: String.format("%02d", meta.timeLimitSec / 60) + ":"
 								+ String.format("%02d", meta.timeLimitSec % 60);
 			case 10:
-				return String.format("%,d", meta.playCount);
+				return meta.playCount;
 			case 11:
 				return meta.lastPlayed == null ? null : Core.dateFormatterMin.format(meta.lastPlayed);
+			case 12:
+				return meta.tag;
 			}
 			return "UNKNOWN";
 		}
@@ -1493,7 +1512,7 @@ class Core {
 
 		@Override
 		public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
-			CreativeMeta meta = Core.creatives.get(rowIndex);
+			CreativeMeta meta = Core.creativesList.get(rowIndex);
 			switch (columnIndex) {
 			case 4:
 				meta.userTag = aValue.toString();
@@ -1513,7 +1532,7 @@ class Core {
 
 		@Override
 		public int getRowCount() {
-			return Core.creatives.size();
+			return Core.creativesList.size();
 		}
 	};
 
@@ -1909,6 +1928,8 @@ class FGReader extends TailerListenerAdapter {
 						if (meta.played == null)
 							meta.played = getTime(line);
 						meta.lastPlayed = getTime(line);
+						if (r.start.getTime() > System.currentTimeMillis() - 2 * 60 * 1000)
+							SwingUtilities.invokeLater(() -> Core.tableModel.fireTableDataChanged());
 					}
 				}
 				creativeCode = null;
@@ -2134,7 +2155,8 @@ class FGReader extends TailerListenerAdapter {
 								long time = r.getTime(player.finish);
 								if (meta != null && (meta.clearMS == 0 || meta.clearMS > time)) {
 									meta.clearMS = time;
-									Core.tableModel.fireTableDataChanged();
+									if (r.start.getTime() > System.currentTimeMillis() - 2 * 60 * 1000)
+										SwingUtilities.invokeLater(() -> Core.tableModel.fireTableDataChanged());
 								}
 							}
 						}
@@ -2310,6 +2332,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		creativesWindow.setBounds(creativesWinRect);
 		creativesWindow.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
 		creativesWindow.setVisible(true);
+		creativesWindow.loadTableStat();
 	}
 
 	void showCreativesWindow() {
@@ -2366,7 +2389,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		label.setSize(100, 20);
 		p.add(label);
 
-		label = new JLabel("Ver 1.0.3");
+		label = new JLabel("Ver 1.1.0");
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.EAST, label, -8, SpringLayout.EAST, p);
 		l.putConstraint(SpringLayout.SOUTH, label, -8, SpringLayout.SOUTH, p);
@@ -2444,8 +2467,8 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		l.putConstraint(SpringLayout.HEIGHT, scroller, 150, SpringLayout.NORTH, p);
 
 		JButton showCreativesButton = new JButton(Core.getRes("ShowCreatives"));
-		showCreativesButton.setFont(new Font(monospacedFontFamily, Font.PLAIN, FONT_SIZE_DETAIL));
-		showCreativesButton.setSize(80, 20);
+		showCreativesButton.setFont(new Font(monospacedFontFamily, Font.BOLD, FONT_SIZE_BASE));
+		showCreativesButton.setSize(80, 18);
 		p.add(showCreativesButton);
 		l.putConstraint(SpringLayout.WEST, showCreativesButton, COL1_X, SpringLayout.WEST, p);
 		//l.putConstraint(SpringLayout.EAST, showCreativesButton, -10, SpringLayout.EAST, p);
@@ -2545,6 +2568,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				} catch (IOException ex) {
 					ex.printStackTrace();
 				}
+				creativesWindow.saveTableStat();
 				Core.save();
 				// log connected servers statistics
 				Map<String, Integer> connected = new HashMap<String, Integer>();
@@ -3000,7 +3024,26 @@ class FastListModel<E> extends AbstractListModel<E> {
 }
 
 class CreativesWindow extends JFrame {
-	JTable table = new JTable(Core.tableModel);
+	JTable table = new JTable(Core.tableModel) {
+		public String getToolTipText(MouseEvent ev) {
+			java.awt.Point p = ev.getPoint();
+			int rowIndex = rowAtPoint(p);
+			int colIndex = columnAtPoint(p);
+			Object o = getValueAt(rowIndex, colIndex);
+			if (o == null)
+				return null;
+			String tip = o.toString();
+			if (tip.length() > 24) {
+				tip = "<html>" + tip;
+				int sepIndex = 26;
+				while (tip.length() > sepIndex) {
+					tip = tip.substring(0, sepIndex) + "<br>" + tip.substring(sepIndex);
+					sepIndex += 24;
+				}
+			}
+			return tip;
+		}
+	};
 
 	public CreativesWindow() {
 		setTitle("Fall Guys Record: Creative Stages");
@@ -3013,6 +3056,51 @@ class CreativesWindow extends JFrame {
 		l.putConstraint(SpringLayout.WEST, desc, 10, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, desc, 10, SpringLayout.NORTH, p);
 
+		JButton refreshButton = new JButton(Core.getRes("refresh"));
+		refreshButton.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
+		p.add(refreshButton);
+		l.putConstraint(SpringLayout.EAST, refreshButton, -4, SpringLayout.EAST, p);
+		l.putConstraint(SpringLayout.NORTH, refreshButton, 3, SpringLayout.NORTH, p);
+		refreshButton.addActionListener(ev -> {
+			Core.tableModel.fireTableDataChanged();
+		});
+		JButton saveButton = new JButton(Core.getRes("save immediately"));
+		saveButton.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
+		p.add(saveButton);
+		l.putConstraint(SpringLayout.EAST, saveButton, -4, SpringLayout.WEST, refreshButton);
+		l.putConstraint(SpringLayout.NORTH, saveButton, 3, SpringLayout.NORTH, p);
+		saveButton.addActionListener(ev -> {
+			Core.save();
+		});
+		JTextField codeText = new JTextField();
+		codeText.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
+		codeText.setPreferredSize(new Dimension(120, 22));
+		p.add(codeText);
+		l.putConstraint(SpringLayout.EAST, codeText, -4, SpringLayout.WEST, saveButton);
+		l.putConstraint(SpringLayout.NORTH, codeText, 4, SpringLayout.NORTH, p);
+		codeText.addFocusListener(new FocusAdapter() {
+			@Override
+			public void focusLost(FocusEvent ev) {
+				String code = codeText.getText().replaceFirst(".*(\\d\\d\\d\\d).*(\\d\\d\\d\\d).*(\\d\\d\\d\\d).*",
+						"$1-$2-$3");
+				if (!code.matches("\\d\\d\\d\\d-\\d\\d\\d\\d-\\d\\d\\d\\d"))
+					return;
+				CreativeMeta meta = Core.retreiveCreativeInfo(code, 0, true);
+				if (meta != null) {
+					Date now = new Date();
+					meta.played = now;
+					meta.lastPlayed = now;
+					Core.tableModel.fireTableDataChanged();
+					codeText.setText("");
+				}
+			}
+		});
+		JLabel codeLabel = new JLabel("CODE:");
+		codeLabel.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
+		p.add(codeLabel);
+		l.putConstraint(SpringLayout.EAST, codeLabel, -4, SpringLayout.WEST, codeText);
+		l.putConstraint(SpringLayout.NORTH, codeLabel, 5, SpringLayout.NORTH, p);
+
 		JScrollPane scroller = new JScrollPane(table);
 		p.add(scroller);
 		table.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE + 2));
@@ -3022,7 +3110,6 @@ class CreativesWindow extends JFrame {
 		l.putConstraint(SpringLayout.SOUTH, scroller, -10, SpringLayout.SOUTH, p);
 
 		table.setRowSorter(new TableRowSorter<TableModel>(Core.tableModel));
-		table.getRowSorter().setSortKeys(Collections.singletonList(new RowSorter.SortKey(11, SortOrder.DESCENDING)));
 		table.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent ev) {
@@ -3032,7 +3119,7 @@ class CreativesWindow extends JFrame {
 				if (index < 0)
 					return;
 				int row = table.convertRowIndexToModel(index);
-				CreativeMeta meta = Core.creatives.get(row);
+				CreativeMeta meta = Core.creativesList.get(row);
 
 				if (ev.getButton() == 1) {
 					Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
@@ -3042,6 +3129,8 @@ class CreativesWindow extends JFrame {
 				}
 			}
 		});
+		DefaultCellEditor ce = (DefaultCellEditor) table.getDefaultEditor(Object.class);
+		ce.setClickCountToStart(1);
 
 		table.getColumnModel().getColumn(0).setMinWidth(124);
 		table.getColumnModel().getColumn(0).setMaxWidth(124);
@@ -3051,13 +3140,56 @@ class CreativesWindow extends JFrame {
 		table.getColumnModel().getColumn(6).setMaxWidth(30);
 		table.getColumnModel().getColumn(9).setMaxWidth(48);
 
-		JButton b = new JButton(Core.getRes("refresh"));
-		b.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE + 2));
-		p.add(b);
-		l.putConstraint(SpringLayout.EAST, b, 0, SpringLayout.EAST, p);
-		l.putConstraint(SpringLayout.NORTH, b, 0, SpringLayout.NORTH, p);
-		b.addActionListener(ev -> {
-			Core.tableModel.fireTableDataChanged();
-		});
+		UIManager.put("ToolTip.font", new Font(FallGuysRecord.fontFamily, Font.BOLD, 20));
+	}
+
+	@SuppressWarnings("unchecked")
+	void loadTableStat() {
+		try (ObjectInputStream in = new ObjectInputStream(new FileInputStream("tablestate.dat"))) {
+			Map<Integer, SortOrder> sort = (Map<Integer, SortOrder>) in.readObject();
+			List<SortKey> sortKeys = new ArrayList<>();
+			for (Map.Entry<Integer, SortOrder> o : sort.entrySet())
+				sortKeys.add(new SortKey(o.getKey(), o.getValue()));
+			table.getRowSorter().setSortKeys(sortKeys);
+
+			// TableColumn を並び替えた状態で再セット
+			TableColumnModel cModel = table.getColumnModel();
+			int[] columnIndices = (int[]) in.readObject();
+			TableColumn[] ordered = new TableColumn[columnIndices.length];
+			for (int i = 0; i < columnIndices.length; i += 1)
+				ordered[i] = cModel.getColumn(columnIndices[i]);
+			while (cModel.getColumnCount() > 0)
+				cModel.removeColumn(cModel.getColumn(0)); // clear columns
+			for (int i = 0; i < columnIndices.length; i += 1)
+				cModel.addColumn(ordered[i]);
+
+			int[] columnWidth = (int[]) in.readObject();
+			for (int i = 0; i < columnIndices.length; i += 1)
+				cModel.getColumn(i).setPreferredWidth(columnWidth[i]);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+
+	void saveTableStat() {
+		List<? extends SortKey> sortKeys = table.getRowSorter().getSortKeys();
+		Map<Integer, SortOrder> sort = new LinkedHashMap<>();
+		for (SortKey k : sortKeys)
+			sort.put(k.getColumn(), k.getSortOrder());
+
+		int[] columnIndices = new int[table.getColumnCount()];
+		int[] columnWidths = new int[table.getColumnCount()];
+		for (int i = 0; i < columnIndices.length; i += 1) {
+			columnIndices[i] = table.getColumnModel().getColumn(i).getModelIndex();
+			columnWidths[i] = table.getColumnModel().getColumn(i).getWidth();
+		}
+
+		try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream("tablestate.dat"))) {
+			out.writeObject(sort);
+			out.writeObject(columnIndices);
+			out.writeObject(columnWidths);
+		} catch (IOException ex) {
+			ex.printStackTrace();
+		}
 	}
 }
