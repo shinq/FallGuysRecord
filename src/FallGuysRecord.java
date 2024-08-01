@@ -722,7 +722,9 @@ class CreativeMeta {
 	String author;
 	String title;
 	String description;
+	int playerLimit;
 	String tag;
+	String thumb;
 	String userTag = ""; // ユーザが指定する想定
 	int userDifficulty; // ユーザが指定する想定の難易度
 	int userScore; // ユーザが指定する想定の評価値
@@ -1201,6 +1203,10 @@ class Core {
 				} catch (ParseException ex) {
 				}
 				meta.tag = d[16];
+				if (d.length > 18) {
+					meta.playerLimit = Integer.parseInt(d[17]);
+					meta.thumb = "".equals(d[18]) ? null : d[18];
+				}
 				addCreativeMeta(meta);
 			}
 		} catch (Exception ex) {
@@ -1222,7 +1228,7 @@ class Core {
 			try (PrintWriter out = new PrintWriter(new OutputStreamWriter(o, StandardCharsets.UTF_8), false)) {
 				o.write(BOM);
 				out.println(
-						"Code\tVersion\tAuthor\tTitle\tClearTime\tUserTag\tUserDifficulty\tUserReview\tUserComment\tDesc\tPlayCount\tLikes\tDislikes\tTimeLimit\tRecorded\tLastPlayed\tTag");
+						"Code\tVersion\tAuthor\tTitle\tClearTime\tUserTag\tUserDifficulty\tUserReview\tUserComment\tDesc\tPlayCount\tLikes\tDislikes\tTimeLimit\tRecorded\tLastPlayed\tTag\tPlayerLimit\tthumbnail");
 				for (CreativeMeta meta : creativesList) {
 					out.print(meta.code); // 0
 					out.print("\t");
@@ -1257,6 +1263,10 @@ class Core {
 					out.print(meta.lastPlayed == null ? "" : dateFormatterMin.format(meta.lastPlayed)); // 15
 					out.print("\t");
 					out.print(meta.tag); // 16
+					out.print("\t");
+					out.print(meta.playerLimit); // 17
+					out.print("\t");
+					out.print(meta.thumb == null ? "" : meta.thumb); // 18
 					out.println();
 				}
 			}
@@ -1392,6 +1402,8 @@ class Core {
 			meta.version = version;
 			meta.author = (String) ((Map<String, Object>) author.get("name_per_platform")).values().iterator().next();
 			meta.tag = String.join(",", ((List<String>) version_metadata.get("creator_tags")));
+			meta.playerLimit = (Integer) version_metadata.get("max_player_count");
+			meta.thumb = (String) version_metadata.get("thumb_url");
 			meta.title = (String) version_metadata.get("title");
 			meta.description = (String) version_metadata.get("description");
 			if (config.containsKey("time_limit_seconds")) {
@@ -1412,18 +1424,18 @@ class Core {
 	public static AbstractTableModel tableModel = new AbstractTableModel() {
 		@Override
 		public int getColumnCount() {
-			return 13;
+			return 14;
 		}
 
 		@Override
 		public String getColumnName(int column) {
 			switch (column) {
 			case 0:
-				return "code";
+				return "Code";
 			case 1:
-				return "author";
+				return "Author";
 			case 2:
-				return "title";
+				return "Title";
 			case 3:
 				return "CrearTime";
 			case 4:
@@ -1435,7 +1447,7 @@ class Core {
 			case 7:
 				return "Comment";
 			case 8:
-				return "description";
+				return "Description";
 			case 9:
 				return "TimeLimit";
 			case 10:
@@ -1444,6 +1456,8 @@ class Core {
 				return "LastPlayed";
 			case 12:
 				return "OfficialTag";
+			case 13:
+				return "PlayerLimit";
 			}
 			return "UNKNOWN";
 		}
@@ -1494,6 +1508,8 @@ class Core {
 				return meta.lastPlayed == null ? null : Core.dateFormatterMin.format(meta.lastPlayed);
 			case 12:
 				return meta.tag;
+			case 13:
+				return meta.playerLimit;
 			}
 			return "UNKNOWN";
 		}
@@ -3030,17 +3046,26 @@ class CreativesWindow extends JFrame {
 			int rowIndex = rowAtPoint(p);
 			int colIndex = columnAtPoint(p);
 			Object o = getValueAt(rowIndex, colIndex);
+			String tip = "<html><body>";
 			if (o == null)
 				return null;
-			String tip = o.toString();
-			if (tip.length() > 24) {
-				tip = "<html>" + tip;
-				int sepIndex = 26;
-				while (tip.length() > sepIndex) {
-					tip = tip.substring(0, sepIndex) + "<br>" + tip.substring(sepIndex);
-					sepIndex += 24;
+			CreativeMeta meta = Core.creativesList.get(convertRowIndexToModel(rowIndex));
+			if (meta != null && meta.thumb != null)
+				tip += "<img src='" + meta.thumb + "' width='512' height='256'><br>";
+			String text = o.toString();
+			int sepIndex = 44;
+			while (text.length() > sepIndex) {
+				int sep = text.indexOf("\\n"); // 明示的改行
+				if (sep == -1 || sep > sepIndex) {
+					sep = sepIndex;
+					tip += text.substring(0, sep) + "<br>";
+				} else {
+					tip += text.substring(0, sep) + "<br>";
+					sep += 2;
 				}
+				text = text.substring(sep);
 			}
+			tip += text;
 			return tip;
 		}
 	};
@@ -3126,6 +3151,7 @@ class CreativesWindow extends JFrame {
 					clipboard.setContents(new StringSelection(meta.code), null);
 				} else if (ev.getButton() == 3) {
 					Core.retreiveCreativeInfo(meta.code, meta.version, true);
+					Core.tableModel.fireTableDataChanged();
 				}
 			}
 		});
@@ -3155,16 +3181,19 @@ class CreativesWindow extends JFrame {
 			// TableColumn を並び替えた状態で再セット
 			TableColumnModel cModel = table.getColumnModel();
 			int[] columnIndices = (int[]) in.readObject();
-			TableColumn[] ordered = new TableColumn[columnIndices.length];
-			for (int i = 0; i < columnIndices.length; i += 1)
+			TableColumn[] ordered = new TableColumn[cModel.getColumnCount()];
+			int i = 0;
+			for (; i < columnIndices.length; i += 1)
 				ordered[i] = cModel.getColumn(columnIndices[i]);
+			for (; i < ordered.length; i += 1)
+				ordered[i] = cModel.getColumn(i);
 			while (cModel.getColumnCount() > 0)
 				cModel.removeColumn(cModel.getColumn(0)); // clear columns
-			for (int i = 0; i < columnIndices.length; i += 1)
+			for (i = 0; i < ordered.length; i += 1)
 				cModel.addColumn(ordered[i]);
 
 			int[] columnWidth = (int[]) in.readObject();
-			for (int i = 0; i < columnIndices.length; i += 1)
+			for (i = 0; i < columnIndices.length; i += 1)
 				cModel.getColumn(i).setPreferredWidth(columnWidth[i]);
 		} catch (Exception ex) {
 			ex.printStackTrace();
