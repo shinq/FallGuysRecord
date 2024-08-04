@@ -1393,6 +1393,7 @@ class Core {
 			Map<String, Object> data = (Map<String, Object>) json.get("data");
 			Map<String, Object> snapshot = (Map<String, Object>) data.get("snapshot");
 			Map<String, Object> author = (Map<String, Object>) snapshot.get("author");
+			Map<String, Object> names = (Map<String, Object>) author.get("name_per_platform");
 			Map<String, Object> version_metadata = (Map<String, Object>) snapshot.get("version_metadata");
 			Map<String, Object> config = (Map<String, Object>) version_metadata.get("config");
 			Map<String, Object> stats = (Map<String, Object>) snapshot.get("stats");
@@ -1400,7 +1401,8 @@ class Core {
 				meta = new CreativeMeta();
 			meta.code = code;
 			meta.version = version;
-			meta.author = (String) ((Map<String, Object>) author.get("name_per_platform")).values().iterator().next();
+			if (names.size() > 0)
+				meta.author = (String) names.values().iterator().next();
 			meta.tag = String.join(",", ((List<String>) version_metadata.get("creator_tags")));
 			meta.playerLimit = (Integer) version_metadata.get("max_player_count");
 			meta.thumb = (String) version_metadata.get("thumb_url");
