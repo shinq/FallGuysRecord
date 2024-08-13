@@ -82,6 +82,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.JTextPane;
+import javax.swing.RowFilter;
 import javax.swing.RowSorter.SortKey;
 import javax.swing.SortOrder;
 import javax.swing.SpringLayout;
@@ -723,6 +724,7 @@ class CreativeMeta {
 	String title;
 	String description;
 	int playerLimit;
+	String gameModeId;
 	String tag;
 	String thumb;
 	String userTag = ""; // ユーザが指定する想定
@@ -1207,6 +1209,8 @@ class Core {
 					meta.playerLimit = Integer.parseInt(d[17]);
 					meta.thumb = "".equals(d[18]) ? null : d[18];
 				}
+				if (d.length > 19)
+					meta.gameModeId = "".equals(d[19]) ? null : d[19];
 				addCreativeMeta(meta);
 			}
 		} catch (Exception ex) {
@@ -1228,13 +1232,13 @@ class Core {
 			try (PrintWriter out = new PrintWriter(new OutputStreamWriter(o, StandardCharsets.UTF_8), false)) {
 				o.write(BOM);
 				out.println(
-						"Code\tVersion\tAuthor\tTitle\tClearTime\tUserTag\tUserDifficulty\tUserReview\tUserComment\tDesc\tPlayCount\tLikes\tDislikes\tTimeLimit\tRecorded\tLastPlayed\tTag\tPlayerLimit\tthumbnail");
+						"Code\tVersion\tAuthor\tTitle\tClearTime\tUserTag\tUserDifficulty\tUserReview\tUserComment\tDesc\tPlayCount\tLikes\tDislikes\tTimeLimit\tRecorded\tLastPlayed\tTag\tPlayerLimit\tthumbnail\tmode");
 				for (CreativeMeta meta : creativesList) {
 					out.print(meta.code); // 0
 					out.print("\t");
 					out.print(meta.version); // 1
 					out.print("\t");
-					out.print(meta.author); // 2
+					out.print(meta.author == null ? "" : meta.author); // 2
 					out.print("\t");
 					out.print(meta.title); // 3
 					out.print("\t");
@@ -1267,6 +1271,8 @@ class Core {
 					out.print(meta.playerLimit); // 17
 					out.print("\t");
 					out.print(meta.thumb == null ? "" : meta.thumb); // 18
+					out.print("\t");
+					out.print(meta.gameModeId == null ? "" : meta.gameModeId); // 19
 					out.println();
 				}
 			}
@@ -1405,6 +1411,11 @@ class Core {
 				meta.author = (String) names.values().iterator().next();
 			meta.tag = String.join(",", ((List<String>) version_metadata.get("creator_tags")));
 			meta.playerLimit = (Integer) version_metadata.get("max_player_count");
+			meta.gameModeId = (String) version_metadata.get("game_mode_id");
+			if (meta.gameModeId != null)
+				meta.gameModeId = meta.gameModeId.replaceFirst("GAMEMODE_", "");
+			if (!"GAUNTLET".equals(meta.gameModeId) && meta.userTag == null)
+				meta.userTag = meta.gameModeId;
 			meta.thumb = (String) version_metadata.get("thumb_url");
 			meta.title = (String) version_metadata.get("title");
 			meta.description = (String) version_metadata.get("description");
@@ -2407,7 +2418,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		label.setSize(100, 20);
 		p.add(label);
 
-		label = new JLabel("Ver 1.1.0");
+		label = new JLabel("Ver 1.1.1");
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.EAST, label, -8, SpringLayout.EAST, p);
 		l.putConstraint(SpringLayout.SOUTH, label, -8, SpringLayout.SOUTH, p);
@@ -3081,13 +3092,38 @@ class CreativesWindow extends JFrame {
 		JLabel desc = new JLabel("left double click=copy code, right double click=reload stage info");
 		p.add(desc);
 		l.putConstraint(SpringLayout.WEST, desc, 10, SpringLayout.WEST, p);
-		l.putConstraint(SpringLayout.NORTH, desc, 10, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.NORTH, desc, 8, SpringLayout.NORTH, p);
 
+		JLabel filterLabel = new JLabel("FILTER:");
+		filterLabel.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
+		p.add(filterLabel);
+		l.putConstraint(SpringLayout.WEST, filterLabel, 40, SpringLayout.EAST, desc);
+		l.putConstraint(SpringLayout.NORTH, filterLabel, 6, SpringLayout.NORTH, p);
+
+		TableRowSorter<TableModel> sorter = new TableRowSorter<TableModel>(Core.tableModel);
+		JTextField filterText = new JTextField();
+		filterText.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
+		filterText.setPreferredSize(new Dimension(120, 22));
+		p.add(filterText);
+		l.putConstraint(SpringLayout.WEST, filterText, 4, SpringLayout.EAST, filterLabel);
+		l.putConstraint(SpringLayout.NORTH, filterText, 4, SpringLayout.NORTH, p);
+		filterText.addFocusListener(new FocusAdapter() {
+			@Override
+			public void focusLost(FocusEvent ev) {
+				String search = filterText.getText().trim();
+				if (search.length() == 0) {
+					sorter.setRowFilter(null);
+					return;
+				}
+				search = "(?i)" + search; // case insensitive
+				sorter.setRowFilter(RowFilter.regexFilter(search));
+			}
+		});
 		JButton refreshButton = new JButton(Core.getRes("refresh"));
 		refreshButton.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
 		p.add(refreshButton);
 		l.putConstraint(SpringLayout.EAST, refreshButton, -4, SpringLayout.EAST, p);
-		l.putConstraint(SpringLayout.NORTH, refreshButton, 3, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.NORTH, refreshButton, 2, SpringLayout.NORTH, p);
 		refreshButton.addActionListener(ev -> {
 			Core.tableModel.fireTableDataChanged();
 		});
@@ -3095,7 +3131,7 @@ class CreativesWindow extends JFrame {
 		saveButton.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
 		p.add(saveButton);
 		l.putConstraint(SpringLayout.EAST, saveButton, -4, SpringLayout.WEST, refreshButton);
-		l.putConstraint(SpringLayout.NORTH, saveButton, 3, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.NORTH, saveButton, 2, SpringLayout.NORTH, p);
 		saveButton.addActionListener(ev -> {
 			Core.save();
 		});
@@ -3126,7 +3162,7 @@ class CreativesWindow extends JFrame {
 		codeLabel.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
 		p.add(codeLabel);
 		l.putConstraint(SpringLayout.EAST, codeLabel, -4, SpringLayout.WEST, codeText);
-		l.putConstraint(SpringLayout.NORTH, codeLabel, 5, SpringLayout.NORTH, p);
+		l.putConstraint(SpringLayout.NORTH, codeLabel, 6, SpringLayout.NORTH, p);
 
 		JScrollPane scroller = new JScrollPane(table);
 		p.add(scroller);
@@ -3136,7 +3172,7 @@ class CreativesWindow extends JFrame {
 		l.putConstraint(SpringLayout.NORTH, scroller, 10, SpringLayout.SOUTH, desc);
 		l.putConstraint(SpringLayout.SOUTH, scroller, -10, SpringLayout.SOUTH, p);
 
-		table.setRowSorter(new TableRowSorter<TableModel>(Core.tableModel));
+		table.setRowSorter(sorter);
 		table.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent ev) {
