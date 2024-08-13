@@ -1416,6 +1416,19 @@ class Core {
 				meta.gameModeId = meta.gameModeId.replaceFirst("GAMEMODE_", "");
 			if (!"GAUNTLET".equals(meta.gameModeId) && meta.userTag == null)
 				meta.userTag = meta.gameModeId;
+			if ("knockout_mode".equals(Core.currentMatch.name)) {
+				if (meta.userTag == null || meta.userTag.length() == 0)
+					meta.userTag = "KNOCKOUT";
+				else if (!meta.userTag.contains("KNOCKOUT"))
+					meta.userTag = meta.userTag + ",KNOCKOUT";
+			}
+			if ("casual_show".equals(Core.currentMatch.name)) {
+				if (meta.userTag == null || meta.userTag.length() == 0)
+					meta.userTag = "CASUAL";
+				else if (!meta.userTag.contains("CASUAL"))
+					meta.userTag = meta.userTag + ",CASUAL";
+			}
+
 			meta.thumb = (String) version_metadata.get("thumb_url");
 			meta.title = (String) version_metadata.get("title");
 			meta.description = (String) version_metadata.get("description");
@@ -3083,6 +3096,10 @@ class CreativesWindow extends JFrame {
 		}
 	};
 
+	JTextField filterText = new JTextField();
+	JTextField notFilterText = new JTextField();
+	TableRowSorter<TableModel> sorter = new TableRowSorter<TableModel>(Core.tableModel);
+
 	public CreativesWindow() {
 		setTitle("Fall Guys Record: Creative Stages");
 		SpringLayout l = new SpringLayout();
@@ -3091,17 +3108,16 @@ class CreativesWindow extends JFrame {
 
 		JLabel desc = new JLabel("left double click=copy code, right double click=reload stage info");
 		p.add(desc);
-		l.putConstraint(SpringLayout.WEST, desc, 10, SpringLayout.WEST, p);
+		l.putConstraint(SpringLayout.WEST, desc, 12, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, desc, 8, SpringLayout.NORTH, p);
 
-		JLabel filterLabel = new JLabel("FILTER:");
+		JLabel filterLabel = new JLabel("INCLUDE:");
 		filterLabel.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
 		p.add(filterLabel);
-		l.putConstraint(SpringLayout.WEST, filterLabel, 40, SpringLayout.EAST, desc);
+		l.putConstraint(SpringLayout.WEST, filterLabel, 24, SpringLayout.EAST, desc);
 		l.putConstraint(SpringLayout.NORTH, filterLabel, 6, SpringLayout.NORTH, p);
 
-		TableRowSorter<TableModel> sorter = new TableRowSorter<TableModel>(Core.tableModel);
-		JTextField filterText = new JTextField();
+		//JTextField filterText = new JTextField();
 		filterText.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
 		filterText.setPreferredSize(new Dimension(120, 22));
 		p.add(filterText);
@@ -3110,15 +3126,28 @@ class CreativesWindow extends JFrame {
 		filterText.addFocusListener(new FocusAdapter() {
 			@Override
 			public void focusLost(FocusEvent ev) {
-				String search = filterText.getText().trim();
-				if (search.length() == 0) {
-					sorter.setRowFilter(null);
-					return;
-				}
-				search = "(?i)" + search; // case insensitive
-				sorter.setRowFilter(RowFilter.regexFilter(search));
+				filter();
 			}
 		});
+		JLabel notFilterLabel = new JLabel("EXCLUDE:");
+		notFilterLabel.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
+		p.add(notFilterLabel);
+		l.putConstraint(SpringLayout.WEST, notFilterLabel, 10, SpringLayout.EAST, filterText);
+		l.putConstraint(SpringLayout.NORTH, notFilterLabel, 6, SpringLayout.NORTH, p);
+
+		//JTextField notFilterText = new JTextField();
+		notFilterText.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
+		notFilterText.setPreferredSize(new Dimension(120, 22));
+		p.add(notFilterText);
+		l.putConstraint(SpringLayout.WEST, notFilterText, 4, SpringLayout.EAST, notFilterLabel);
+		l.putConstraint(SpringLayout.NORTH, notFilterText, 4, SpringLayout.NORTH, p);
+		notFilterText.addFocusListener(new FocusAdapter() {
+			@Override
+			public void focusLost(FocusEvent ev) {
+				filter();
+			}
+		});
+
 		JButton refreshButton = new JButton(Core.getRes("refresh"));
 		refreshButton.setFont(new Font(FallGuysRecord.fontFamily, Font.PLAIN, FallGuysRecord.FONT_SIZE_BASE));
 		p.add(refreshButton);
@@ -3205,6 +3234,17 @@ class CreativesWindow extends JFrame {
 		table.getColumnModel().getColumn(9).setMaxWidth(48);
 
 		UIManager.put("ToolTip.font", new Font(FallGuysRecord.fontFamily, Font.BOLD, 20));
+	}
+
+	void filter() {
+		String filterStr = filterText.getText().trim();
+		String notFilterStr = notFilterText.getText().trim();
+		List<RowFilter<Object, Object>> filters = new ArrayList<>();
+		if (filterStr.length() > 0)
+			filters.add(RowFilter.regexFilter("(?i)" + filterStr)); // case insensitive
+		if (notFilterStr.length() > 0)
+			filters.add(RowFilter.notFilter(RowFilter.regexFilter("(?i)" + notFilterStr))); // case insensitive
+		sorter.setRowFilter(RowFilter.andFilter(filters));
 	}
 
 	@SuppressWarnings("unchecked")
