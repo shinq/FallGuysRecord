@@ -1414,20 +1414,14 @@ class Core {
 			meta.gameModeId = (String) version_metadata.get("game_mode_id");
 			if (meta.gameModeId != null)
 				meta.gameModeId = meta.gameModeId.replaceFirst("GAMEMODE_", "");
-			if (!"GAUNTLET".equals(meta.gameModeId) && meta.userTag == null)
-				meta.userTag = meta.gameModeId;
-			if ("knockout_mode".equals(Core.currentMatch.name)) {
-				if (meta.userTag == null || meta.userTag.length() == 0)
-					meta.userTag = "KNOCKOUT";
-				else if (!meta.userTag.contains("KNOCKOUT"))
-					meta.userTag = meta.userTag + ",KNOCKOUT";
-			}
-			if ("casual_show".equals(Core.currentMatch.name)) {
-				if (meta.userTag == null || meta.userTag.length() == 0)
-					meta.userTag = "CASUAL";
-				else if (!meta.userTag.contains("CASUAL"))
-					meta.userTag = meta.userTag + ",CASUAL";
-			}
+			if (!"GAUNTLET".equals(meta.gameModeId))
+				meta.userTag = append(meta.userTag, meta.gameModeId);
+			if ("knockout_mode".equals(Core.currentMatch.name))
+				meta.userTag = append(meta.userTag, "KNOCKOUT");
+			if ("casual_show".equals(Core.currentMatch.name))
+				meta.userTag = append(meta.userTag, "CASUAL");
+			if ("discover".equals(Core.currentMatch.name))
+				meta.userTag = append(meta.userTag, "DISCOVER");
 
 			meta.thumb = (String) version_metadata.get("thumb_url");
 			meta.title = (String) version_metadata.get("title");
@@ -1444,6 +1438,14 @@ class Core {
 			e.printStackTrace();
 			JOptionPane.showMessageDialog(null, "Error: " + e.getMessage());
 		}
+		return null;
+	}
+
+	static String append(String source, String value) {
+		if (source == null || source.length() == 0)
+			return value;
+		else if (!source.contains(value))
+			return source + "," + value;
 		return null;
 	}
 
@@ -1774,6 +1776,8 @@ class FGReader extends TailerListenerAdapter {
 			.compile("\\[GameStateMachine\\] Replacing FGClient.StateMatchmaking with FGClient.StateConnectToGame");
 	static Pattern patternShowStartCustomShow = Pattern
 			.compile("\\[GameStateMachine\\] Replacing FGClient.StatePrivateLobby with FGClient.StateConnectToGame");
+	static Pattern patternShowStartDiscover = Pattern
+			.compile("\\[GameStateMachine\\] Replacing FGClient.StateMainMenu with FGClient.StatePrivateLobbyMinimal");
 
 	static Pattern patternShowName = Pattern.compile("\\[HandleSuccessfulLogin\\] Selected show is ([^\\s]+)");
 	//	static Pattern patternShow = Pattern
@@ -1940,13 +1944,21 @@ class FGReader extends TailerListenerAdapter {
 				isCustomShow = true;
 				return;
 			}
+			m = patternShowStartDiscover.matcher(line);
+			if (m.find()) { // detection of start discover mode
+				isCustomShow = false;
+				String showName = "discover";
+				Core.currentMatch.name = showName;
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
+					listener.showUpdated();
+				return;
+			}
 			m = patternShowName.matcher(line);
 			if (m.find()) {
 				String showName = m.group(1);
 				Core.currentMatch.name = showName;
 				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
-					System.out.println("SHOW NAME UPDATED: " + showName);
-				listener.showUpdated();
+					listener.showUpdated();
 				return;
 			}
 			if (line.contains("isFinalRound=")) {
