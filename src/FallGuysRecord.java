@@ -1437,7 +1437,8 @@ class Core {
 			meta.dislikes = (Integer) stats.get("dislikes");
 			return meta;
 		} catch (IOException e) {
-			meta.title = "UNKNOWN ROUND";
+			if (meta.title == null)
+				meta.title = "UNKNOWN ROUND";
 			e.printStackTrace();
 			JOptionPane.showMessageDialog(null, "Error: " + e.getMessage());
 		}
