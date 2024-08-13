@@ -1372,12 +1372,19 @@ class Core {
 
 	@SuppressWarnings("unchecked")
 	public static CreativeMeta retreiveCreativeInfo(String code, int version, boolean force) {
+		if (code == null)
+			return null;
+		CreativeMeta meta = Core.creativesMap.get(code);
+		if (meta != null && !force)
+			return meta;
+
+		if (meta == null)
+			meta = new CreativeMeta();
+		meta.code = code;
+		meta.version = version;
+		Core.addCreativeMeta(meta);
+
 		try {
-			if (code == null)
-				return null;
-			CreativeMeta meta = Core.creativesMap.get(code);
-			if (meta != null && !force)
-				return meta;
 			URL url = new URL("https://api2.fallguysdb.info/api/creative/" + code + ".json");
 			HttpURLConnection con = (HttpURLConnection) url.openConnection();
 			con.setRequestProperty("User-Agent", "Chrome");
@@ -1403,10 +1410,6 @@ class Core {
 			Map<String, Object> version_metadata = (Map<String, Object>) snapshot.get("version_metadata");
 			Map<String, Object> config = (Map<String, Object>) version_metadata.get("config");
 			Map<String, Object> stats = (Map<String, Object>) snapshot.get("stats");
-			if (meta == null)
-				meta = new CreativeMeta();
-			meta.code = code;
-			meta.version = version;
 			if (names.size() > 0)
 				meta.author = (String) names.values().iterator().next();
 			meta.tag = String.join(",", ((List<String>) version_metadata.get("creator_tags")));
@@ -1432,13 +1435,13 @@ class Core {
 			meta.playCount = (Integer) stats.get("play_count");
 			meta.likes = (Integer) stats.get("likes");
 			meta.dislikes = (Integer) stats.get("dislikes");
-			Core.addCreativeMeta(meta);
 			return meta;
 		} catch (IOException e) {
+			meta.title = "UNKNOWN ROUND";
 			e.printStackTrace();
 			JOptionPane.showMessageDialog(null, "Error: " + e.getMessage());
 		}
-		return null;
+		return meta;
 	}
 
 	static String append(String source, String value) {
