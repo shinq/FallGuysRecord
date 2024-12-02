@@ -1419,13 +1419,14 @@ class Core {
 				meta.gameModeId = meta.gameModeId.replaceFirst("GAMEMODE_", "");
 			if (!"GAUNTLET".equals(meta.gameModeId))
 				meta.userTag = append(meta.userTag, meta.gameModeId);
-			if ("knockout_mode".equals(Core.currentMatch.name))
-				meta.userTag = append(meta.userTag, "KNOCKOUT");
-			if ("casual_show".equals(Core.currentMatch.name))
-				meta.userTag = append(meta.userTag, "CASUAL");
-			if ("discover".equals(Core.currentMatch.name))
-				meta.userTag = append(meta.userTag, "DISCOVER");
-
+			if (!force) {
+				if ("knockout_mode".equals(Core.currentMatch.name))
+					meta.userTag = append(meta.userTag, "KNOCKOUT");
+				if ("casual_show".equals(Core.currentMatch.name))
+					meta.userTag = append(meta.userTag, "CASUAL");
+				if ("discover".equals(Core.currentMatch.name))
+					meta.userTag = append(meta.userTag, "DISCOVER");
+			}
 			meta.thumb = (String) version_metadata.get("thumb_url");
 			meta.title = (String) version_metadata.get("title");
 			meta.description = (String) version_metadata.get("description");
@@ -1639,12 +1640,11 @@ class Core {
 	}
 
 	public static List<Round> filter(RoundFilter f) {
-		return filter(f, 0, false);
+		return filter(f, false);
 	}
 
-	public static List<Round> filter(RoundFilter f, int limit, boolean cacheUpdate) {
+	public static List<Round> filter(RoundFilter f, boolean cacheUpdate) {
 		List<Round> result = new ArrayList<>();
-		int c = 0;
 		Match prevMatch = null;
 		synchronized (listLock) {
 			for (ListIterator<Round> i = rounds.listIterator(rounds.size()); i.hasPrevious();) {
@@ -1654,9 +1654,6 @@ class Core {
 				result.add(0, r);
 				if (prevMatch == null || prevMatch != r.match) {
 					prevMatch = r.match;
-					c += 1;
-					if (limit > 0 && c >= limit)
-						break;
 				}
 			}
 		}
@@ -1670,7 +1667,8 @@ class Core {
 			return;
 		synchronized (listLock) {
 			stat.reset();
-			for (Round r : filter(filter, limit, true)) {
+			int c = 0;
+			for (Round r : filter(filter, true)) {
 				if (/*!r.fixed ||*/ !r.isEnabled() || r.getSubstanceQualifiedCount() == 0)
 					continue;
 
@@ -1680,6 +1678,9 @@ class Core {
 						continue;
 					rankingMaker.calcTotalScore(stat, p, r);
 				}
+				c += 1;
+				if (limit > 0 && c >= limit)
+					break;
 			}
 			rankingMaker.calcFinish(stat);
 		}
@@ -3217,7 +3218,15 @@ class CreativesWindow extends JFrame {
 		l.putConstraint(SpringLayout.NORTH, scroller, 10, SpringLayout.SOUTH, desc);
 		l.putConstraint(SpringLayout.SOUTH, scroller, -10, SpringLayout.SOUTH, p);
 
+		table.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
 		table.setRowSorter(sorter);
+		sorter.addRowSorterListener(ev -> {
+			List<? extends SortKey> keys = sorter.getSortKeys();
+			List<SortKey> newKeys = new ArrayList<>();
+			newKeys.addAll(keys);
+			newKeys.add(new SortKey(11, SortOrder.DESCENDING));
+			sorter.setSortKeys(keys);
+		});
 		table.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent ev) {
