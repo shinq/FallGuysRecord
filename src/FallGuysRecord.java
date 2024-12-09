@@ -241,6 +241,7 @@ class Round implements Comparable<Round> {
 		start = id;
 		this.isFinal = isFinal;
 		this.match = match;
+		byName.put("YOU", new Player(0)); // player add 前に自身がいるマッチか否かの判定を通すため。メンバリスト構築時にリセット。
 	}
 
 	public RoundDef getDef() {
@@ -1078,6 +1079,9 @@ class Core {
 	public static int currentYear;
 	public static int currentMonth;
 	public static int currentUTCDate;
+	public static Integer queuedPlayers;
+	public static String queuedState;
+	public static long matchingTime; // connecting になった時刻から現在時刻までの経過時間。
 	public static String currentServerIp;
 	public static RankingMaker rankingMaker = new RankingMaker();
 	public static final List<Match> matches = new ArrayList<>();
@@ -1625,6 +1629,8 @@ class Core {
 			} else
 				rounds.add(r);
 		}
+		if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
+			Core.filter(Core.filter, true);
 	}
 
 	// 条件に合うラウンドを含むマッチ数を数える。
@@ -1668,7 +1674,7 @@ class Core {
 		synchronized (listLock) {
 			stat.reset();
 			int c = 0;
-			for (Round r : filter(filter, true)) {
+			for (Round r : filtered) {
 				if (/*!r.fixed ||*/ !r.isEnabled() || r.getSubstanceQualifiedCount() == 0)
 					continue;
 
@@ -1716,6 +1722,8 @@ class FGReader extends TailerListenerAdapter {
 	public interface Listener {
 		void showUpdated();
 
+		void queuedStateUpdated();
+
 		void roundStarted();
 
 		void roundUpdated();
@@ -1759,6 +1767,7 @@ class FGReader extends TailerListenerAdapter {
 	int qualifiedCount = 0;
 	int eliminatedCount = 0;
 	boolean isFinal = false;
+	long connectingTime = 0;
 
 	@Override
 	public void handle(String line) {
@@ -1818,6 +1827,8 @@ class FGReader extends TailerListenerAdapter {
 			"-playerId:(\\d+) points:(\\d+) isfinal:([^\\s]+) name:");
 
 	static Pattern patternCreativeCode = Pattern.compile("\\[RoundLoader\\] Load UGC via share code: ([\\d-]+):(\\d+)");
+	static Pattern patternQueuedPlayers = Pattern.compile("\"queuedPlayers\": (.+),");
+	static Pattern patternQueuedState = Pattern.compile("\"state\": (.+)");
 
 	static DateFormat dateLocal = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
 	static DateFormat f = new SimpleDateFormat("HH:mm:ss.SSS");
@@ -1936,6 +1947,24 @@ class FGReader extends TailerListenerAdapter {
 		if (m.find()) {
 			r.myPlayerId = Integer.parseUnsignedInt(m.group(2));
 		}
+		m = patternQueuedPlayers.matcher(line);
+		if (m.find()) {
+			try {
+				Core.queuedPlayers = Integer.parseUnsignedInt(m.group(1).replaceAll("\"(.+)\"", "$1"));
+			} catch (Exception e) {
+				Core.queuedPlayers = 0;
+			}
+		}
+		m = patternQueuedState.matcher(line);
+		if (m.find()) {
+			Core.queuedState = m.group(1).replaceAll("\"(.+)\"", "$1");
+			if ("Connecting".equals(Core.queuedState) || "QueuedFull".equals(Core.queuedState))
+				connectingTime = System.currentTimeMillis();
+			Core.matchingTime = (int) (System.currentTimeMillis() - connectingTime);
+			System.out.println(String.format("%3d", Core.matchingTime / 1000)
+					+ " QueuedState: " + Core.queuedState + " Players: " + Core.queuedPlayers);
+			listener.queuedStateUpdated();
+		}
 		switch (readState) {
 		case SHOW_DETECTING: // start show or round detection
 		case ROUND_DETECTING: // start round detection
@@ -2001,6 +2030,8 @@ class FGReader extends TailerListenerAdapter {
 				r.roundName2 = roundName2;
 				System.out.println("DETECT STARTING " + roundName2);
 				readState = ReadState.MEMBER_DETECTING;
+				listener.roundStarted(); // ラウンド確定時にUI更新したい
+				r.byName.remove("YOU"); // メンバリスト構築前にテンポラリ情報リセット
 				return;
 			}
 			return;
@@ -2094,7 +2125,7 @@ class FGReader extends TailerListenerAdapter {
 				return;
 			}
 			if (line.contains("[GameSession] Changing state from Countdown to Playing")) {
-				// start を書き換える前のエントリを除去
+				// start を書き換える前のエントリを除去(key なので)
 				synchronized (Core.listLock) {
 					Core.rounds.remove(r);
 					Core.currentMatch.rounds.remove(r);
@@ -2380,6 +2411,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		Core.started = true;
 		// ad-hoc show initial stats
 		// ラウンド終了検出で更新されるがそれだけだと起動時ログがないときの初期表示がされないのでとりあえず
+		Core.filter(Core.filter, true);
 		Core.updateStats();
 		frame.updateRounds();
 		frame.displayStats();
@@ -2448,7 +2480,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		label.setSize(100, 20);
 		p.add(label);
 
-		label = new JLabel("Ver 1.1.1");
+		label = new JLabel("Ver 1.1.2");
 		label.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE));
 		l.putConstraint(SpringLayout.EAST, label, -8, SpringLayout.EAST, p);
 		l.putConstraint(SpringLayout.SOUTH, label, -8, SpringLayout.SOUTH, p);
@@ -2506,6 +2538,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		rankingMakerSel.addItemListener(ev -> {
 			Core.rankingMaker = (RankingMaker) rankingMakerSel.getSelectedItem();
 			rankingDescLabel.setText(Core.rankingMaker.getDesc());
+			Core.filter(Core.filter, true);
 			Core.updateStats();
 			displayStats();
 		});
@@ -2546,6 +2579,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		filterSel.addItem(new AllRoundFilter());
 		filterSel.addItemListener(ev -> {
 			Core.filter = (RoundFilter) filterSel.getSelectedItem();
+			Core.filter(Core.filter, true);
 			Core.updateStats();
 			updateMatches();
 			updateRounds();
@@ -2777,6 +2811,14 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		});
 	}
 
+	public void queuedStateUpdated() {
+		if (!Core.started)
+			return;
+		SwingUtilities.invokeLater(() -> {
+			refreshRoundDetail(getSelectedRound());
+		});
+	}
+
 	@Override
 	public void roundDone() {
 		if (!Core.started)
@@ -2800,6 +2842,9 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 	void refreshRoundDetail(Round r) {
 		roundDetailArea.setText("");
+		if (!"null".equals(Core.queuedState))
+			appendToRoundDetail(String.format("%3d", Core.matchingTime / 1000) + "s State: " + Core.queuedState
+					+ " Players: " + Core.queuedPlayers, null);
 		if (r == null) {
 			return;
 		}
