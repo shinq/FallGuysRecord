@@ -1958,7 +1958,7 @@ class FGReader extends TailerListenerAdapter {
 		m = patternQueuedState.matcher(line);
 		if (m.find()) {
 			Core.queuedState = m.group(1).replaceAll("\"(.+)\"", "$1");
-			if ("Connecting".equals(Core.queuedState) || "QueuedFull".equals(Core.queuedState))
+			if ("Connecting".equals(Core.queuedState) || "QueueFull".equals(Core.queuedState))
 				connectingTime = System.currentTimeMillis();
 			Core.matchingTime = (int) (System.currentTimeMillis() - connectingTime);
 			System.out.println(String.format("%3d", Core.matchingTime / 1000)
