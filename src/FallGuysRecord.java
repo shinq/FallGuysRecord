@@ -1129,7 +1129,8 @@ class Core {
 					m = new Match(Long.parseLong(d[1]), d[3], matchStart, d[4], isCustom);
 					m.pingMS = Integer.parseInt(d[5]);
 					m.winStreak = Integer.parseInt(d[6]);
-					addMatch(m);
+					matches.add(m);
+					currentMatch = m;
 					continue;
 				}
 				if (!"r".equals(d[0]) || d.length < 18)
@@ -1157,7 +1158,9 @@ class Core {
 				if (d.length > 18)
 					r.teamScore = Core.intArrayFromString(d[18]);
 				r.add(p);
-				addRound(r);
+				r.match.rounds.add(r);
+				rounds.add(r);
+				currentRound = r;
 				r.playerCount = Integer.parseInt(d[6]); // reset
 			}
 		} catch (Exception ex) {
@@ -1657,11 +1660,14 @@ class Core {
 				Round r = i.previous();
 				if (f != null && !f.isEnabled(r))
 					continue;
-				result.add(0, r);
+				result.add(r);
 				if (prevMatch == null || prevMatch != r.match) {
 					prevMatch = r.match;
 				}
+				if (cacheUpdate && limit > 0 && result.size() >= limit)
+					break;
 			}
+			Collections.reverse(result);
 		}
 		if (cacheUpdate)
 			filtered = result;
@@ -2614,6 +2620,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		matchSel = new JList<Match>(new FastListModel<>());
 		matchSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
+		matchSel.setFixedCellHeight(28);
 		p.add(scroller = new JScrollPane(matchSel));
 		l.putConstraint(SpringLayout.WEST, scroller, COL2_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
@@ -2629,6 +2636,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 
 		roundsSel = new JList<Round>(new FastListModel<>());
 		roundsSel.setFont(new Font(fontFamily, Font.PLAIN, FONT_SIZE_BASE + 4));
+		roundsSel.setFixedCellHeight(28);
 		p.add(scroller = new JScrollPane(roundsSel));
 		l.putConstraint(SpringLayout.WEST, scroller, COL3_X, SpringLayout.WEST, p);
 		l.putConstraint(SpringLayout.NORTH, scroller, 8, SpringLayout.SOUTH, statsLabel);
