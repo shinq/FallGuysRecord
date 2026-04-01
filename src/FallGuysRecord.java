@@ -234,6 +234,7 @@ class Round implements Comparable<Round> {
 	// creative
 	String creativeCode;
 	int creativeVersion;
+	boolean playing;
 
 	public Round(String name, int no, Date id, boolean isFinal, Match match) {
 		this.name = name;
@@ -2138,26 +2139,28 @@ class FGReader extends TailerListenerAdapter {
 				}
 				r.start = getTime(line);
 				Core.addRound(r); // 再add
+				r.playing = true;
 				topObjectId = 0;
 				qualifiedCount = eliminatedCount = 0; // reset
 				readState = ReadState.RESULT_DETECTING;
 				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000) {
 					listener.roundStarted();
-					if (r.getDef().type == RoundType.SURVIVAL) {
-						if (survivalScoreTimer != null)
-							survivalScoreTimer.cancel();
-						survivalScoreTimer = new Timer();
-						survivalScoreTimer.scheduleAtFixedRate(new TimerTask() {
-							@Override
-							public void run() {
-								for (Player p : Core.currentRound.byId.values()) {
+					if (survivalScoreTimer != null)
+						survivalScoreTimer.cancel();
+					survivalScoreTimer = new Timer();
+					survivalScoreTimer.scheduleAtFixedRate(new TimerTask() {
+						@Override
+						public void run() {
+							Round current = Core.currentRound;
+							if (current != null && current.getDef().type == RoundType.SURVIVAL) {
+								for (Player p : current.byId.values()) {
 									if (p.qualified == null)
 										p.score += 1;
 								}
-								listener.roundUpdated();
 							}
-						}, 1000, 1000);
-					}
+							listener.roundUpdated();
+						}
+					}, 1000, 1000);
 				}
 				return;
 			}
@@ -2165,6 +2168,8 @@ class FGReader extends TailerListenerAdapter {
 					|| line.contains("[StateMatchmaking] Begin matchmaking")) {
 				System.out.println("DETECT BACK TO LOBBY");
 				Core.rounds.remove(Core.rounds.size() - 1); // delete current round
+				if (Core.currentRound != null)
+					Core.currentRound.playing = false;
 				readState = ReadState.SHOW_DETECTING;
 				return;
 			}
@@ -2291,6 +2296,7 @@ class FGReader extends TailerListenerAdapter {
 			//if (text.contains("[ClientGameManager] Server notifying that the round is over.")
 			if (line.contains("[GameSession] Changing state from Playing to GameOver")) {
 				r.end = getTime(line);
+				r.playing = false;
 				if (survivalScoreTimer != null) {
 					survivalScoreTimer.cancel();
 					survivalScoreTimer.purge();
@@ -2304,6 +2310,7 @@ class FGReader extends TailerListenerAdapter {
 							"[GameStateMachine] Replacing FGClient.StateGameInProgress with FGClient.StateVictoryScreen")) {
 				System.out.println("DETECT END GAME");
 				r.fixed = true;
+				r.playing = false;
 				// FIXME: teamId 相当が出力されないので誰がどのチームか判定できない。
 				// 仕方ないので勝敗からチームを推測する。これだと２チーム戦しか対応できない。
 				if (r.teamScore != null) {
@@ -2344,6 +2351,8 @@ class FGReader extends TailerListenerAdapter {
 					survivalScoreTimer.purge();
 					survivalScoreTimer = null;
 				}
+				if (Core.currentRound != null)
+					Core.currentRound.playing = false;
 				readState = ReadState.SHOW_DETECTING;
 				Core.currentMatch.finished(getTime(line));
 				return;
@@ -2858,17 +2867,27 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 		}
 		CreativeMeta meta = Core.retreiveCreativeInfo(r.creativeCode, r.creativeVersion, false);
 		appendToRoundDetail(r.roundName2, "bold");
+		boolean timeDisplayed = false;
 		if (r.creativeCode != null) {
 			appendToRoundDetail(r.creativeCode + " v" + r.creativeVersion, "bold");
 			if (meta != null) {
 				appendToRoundDetail(meta.title, null);
 				appendToRoundDetail("TIME LIMIT: " + Core.pad0((int) (meta.timeLimitSec / 60)) + ":"
 						+ String.format("%02d", meta.timeLimitSec % 60), null);
+				if (r.playing || r.fixed) {
+					long elapsed = r.fixed ? (r.end == null ? 0 : r.getTime(r.end)) : (r.playing ? r.getTime(new Date()) : 0);
+					appendToRoundDetail("TIME: " + Core.pad0((int) (elapsed / 60000)) + ":" + Core.pad0((int) (elapsed % 60000 / 1000)), "bold");
+					timeDisplayed = true;
+				}
 				if (meta.clearMS > 0)
 					appendToRoundDetail("BEST: " + Core.pad0((int) (meta.clearMS / 60000)) + ":"
 							+ Core.pad0((int) (meta.clearMS % 60000 / 1000))
 							+ "." + String.format("%03d", meta.clearMS % 1000), "bold");
 			}
+		}
+		if (!timeDisplayed && (r.playing || r.fixed)) {
+			long elapsed = r.fixed ? (r.end == null ? 0 : r.getTime(r.end)) : (r.playing ? r.getTime(new Date()) : 0);
+			appendToRoundDetail("TIME: " + Core.pad0((int) (elapsed / 60000)) + ":" + Core.pad0((int) (elapsed % 60000 / 1000)), "bold");
 		}
 		if (r.topFinish != null) {
 			long t = r.getTime(r.topFinish);
