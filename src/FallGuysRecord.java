@@ -1093,6 +1093,7 @@ class Core {
 	public static Map<String, Map<String, String>> servers = new HashMap<>();
 	public static final List<CreativeMeta> creativesList = new ArrayList<>(); // master
 	public static final Map<String, CreativeMeta> creativesMap = new HashMap<>(); // index by code
+	public static final Map<String, Long> stageBestTimes = new HashMap<>(); // key=stage name, value=best time in ms
 
 	static void addCreativeMeta(CreativeMeta meta) {
 		if (creativesMap.containsKey(meta.code)) {
@@ -1166,6 +1167,23 @@ class Core {
 			}
 		} catch (Exception ex) {
 			ex.printStackTrace();
+		}
+
+		// stats.tsv の全ラウンドからステージ別ベストタイムを集計
+		// ※ stats.tsv ロード後は r.creativeCode が復元されないため、ステージ名で判別する
+		for (Round r : rounds) {
+			Player p = r.getMe();
+			if (p == null || !p.isQualified() || r.name.startsWith("FallGuy_FraggleBackground"))
+				continue;
+			if (p.finish == null)
+				continue;
+			long time = r.getTime(p.finish);
+			if (time <= 0)
+				continue;
+			String key = r.roundName2 != null && r.roundName2.length() > 0 ? r.roundName2 : r.name;
+			Long prev = stageBestTimes.get(key);
+			if (prev == null || prev > time)
+				stageBestTimes.put(key, time);
 		}
 
 		try (BufferedReader in = new BufferedReader(
@@ -2259,6 +2277,16 @@ class FGReader extends TailerListenerAdapter {
 									if (r.start.getTime() > System.currentTimeMillis() - 2 * 60 * 1000)
 										SwingUtilities.invokeLater(() -> Core.tableModel.fireTableDataChanged());
 								}
+							} else if (player.finish != null) {
+								// 通常ステージのベストタイム記録（メモリ更新のみ、stats.tsv に自動保存）
+								long time = r.getTime(player.finish);
+								if (time > 0) {
+									String key = r.roundName2 != null && r.roundName2.length() > 0 ? r.roundName2
+											: r.name;
+									Long prev = Core.stageBestTimes.get(key);
+									if (prev == null || prev > time)
+										Core.stageBestTimes.put(key, time);
+								}
 							}
 						}
 					} else {
@@ -2875,8 +2903,10 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 				appendToRoundDetail("TIME LIMIT: " + Core.pad0((int) (meta.timeLimitSec / 60)) + ":"
 						+ String.format("%02d", meta.timeLimitSec % 60), null);
 				if (r.playing || r.fixed) {
-					long elapsed = r.fixed ? (r.end == null ? 0 : r.getTime(r.end)) : (r.playing ? r.getTime(new Date()) : 0);
-					appendToRoundDetail("TIME: " + Core.pad0((int) (elapsed / 60000)) + ":" + Core.pad0((int) (elapsed % 60000 / 1000)), "bold");
+					long elapsed = r.fixed ? (r.end == null ? 0 : r.getTime(r.end))
+							: (r.playing ? r.getTime(new Date()) : 0);
+					appendToRoundDetail("TIME: " + Core.pad0((int) (elapsed / 60000)) + ":"
+							+ Core.pad0((int) (elapsed % 60000 / 1000)), "bold");
 					timeDisplayed = true;
 				}
 				if (meta.clearMS > 0)
@@ -2884,24 +2914,42 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 							+ Core.pad0((int) (meta.clearMS % 60000 / 1000))
 							+ "." + String.format("%03d", meta.clearMS % 1000), "bold");
 			}
+		} else {
+			// 通常ステージのベストタイム表示
+			String key = r.roundName2 != null && r.roundName2.length() > 0 ? r.roundName2 : r.name;
+			Long stageBest = Core.stageBestTimes.get(key);
+			if (stageBest != null && stageBest > 0)
+				appendToRoundDetail("BEST: " + Core.pad0((int) (stageBest / 60000)) + ":"
+						+ Core.pad0((int) (stageBest % 60000 / 1000))
+						+ "." + String.format("%03d", stageBest % 1000), "bold");
+			if (!timeDisplayed && (r.playing || r.fixed)) {
+				long elapsed = r.fixed ? (r.end == null ? 0 : r.getTime(r.end))
+						: (r.playing ? r.getTime(new Date()) : 0);
+				appendToRoundDetail(
+						"TIME: " + Core.pad0((int) (elapsed / 60000)) + ":" + Core.pad0((int) (elapsed % 60000 / 1000)),
+						"bold");
+				timeDisplayed = true;
+			}
 		}
 		if (!timeDisplayed && (r.playing || r.fixed)) {
 			long elapsed = r.fixed ? (r.end == null ? 0 : r.getTime(r.end)) : (r.playing ? r.getTime(new Date()) : 0);
-			appendToRoundDetail("TIME: " + Core.pad0((int) (elapsed / 60000)) + ":" + Core.pad0((int) (elapsed % 60000 / 1000)), "bold");
+			appendToRoundDetail(
+					"TIME: " + Core.pad0((int) (elapsed / 60000)) + ":" + Core.pad0((int) (elapsed % 60000 / 1000)),
+					"bold");
 		}
 		if (r.topFinish != null) {
 			long t = r.getTime(r.topFinish);
-			appendToRoundDetail("TOP: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
+			appendToRoundDetail("TOP:  " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000), "bold");
 		}
 		if (r.getMe() != null && r.getMe().finish != null && r.byId.get(r.myPlayerId) != null) {
 			long t = r.getTime(r.getMe().finish);
-			appendToRoundDetail("YOU: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
+			appendToRoundDetail("YOU:  " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000) + " #" + r.byId.get(r.myPlayerId).ranking, "bold");
 		}
 		if (r.end != null) {
 			long t = r.getTime(r.end);
-			appendToRoundDetail("END: " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
+			appendToRoundDetail("END:  " + Core.pad0((int) (t / 60000)) + ":" + Core.pad0((int) (t % 60000 / 1000))
 					+ "." + String.format("%03d", t % 1000), "bold");
 		}
 		if (r.teamScore != null) {
