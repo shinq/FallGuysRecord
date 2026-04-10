@@ -469,7 +469,10 @@ class Round implements Comparable<Round> {
 		if (getMe().finish != null)
 			buf.append(" ").append(String.format("%.3f", (double) getTime(getMe().finish) / 1000)).append("s");
 		buf.append(" ").append(match.ip);
-		buf.append(" ").append(match.pingMS).append("ms");
+		if (match.pingMS > 0)
+			buf.append(" ").append(match.pingMS).append("ms");
+		else
+			buf.append(" ---ms");
 		if (disableMe)
 			buf.append(" ☓");
 		return new String(buf);
@@ -1854,6 +1857,7 @@ class FGReader extends TailerListenerAdapter {
 	static Pattern patternCreativeCode = Pattern.compile("\\[RoundLoader\\] Load UGC via share code: ([\\d-]+):(\\d+)");
 	static Pattern patternQueuedPlayers = Pattern.compile("\"queuedPlayers\": (.+),");
 	static Pattern patternQueuedState = Pattern.compile("\"state\": (.+)");
+	static Pattern patternRTT = Pattern.compile("Network - RTT: (\\d+)ms");
 
 	static DateFormat dateLocal = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
 	static DateFormat f = new SimpleDateFormat("HH:mm:ss.SSS");
@@ -1893,11 +1897,6 @@ class FGReader extends TailerListenerAdapter {
 		public void run() {
 			// ping check
 			try {
-				InetAddress address = InetAddress.getByName(match.ip);
-				long now = System.currentTimeMillis();
-				boolean res = address.isReachable(3000);
-				match.pingMS = System.currentTimeMillis() - now;
-				System.out.println("PING " + res + " " + match.pingMS);
 				Map<String, String> server = Core.servers.get(match.ip);
 				if (server == null) {
 					ObjectMapper mapper = new ObjectMapper();
@@ -1913,6 +1912,23 @@ class FGReader extends TailerListenerAdapter {
 					listener.showUpdated();
 				System.err.println(match.ip + " " + match.pingMS + " " + server.get("timezone") + " "
 						+ server.get("city"));
+				
+				// fallback: run manual ping asynchronously
+				if (match.pingMS == 0) {
+					new Thread(() -> {
+						try {
+							InetAddress address = InetAddress.getByName(match.ip);
+							long now = System.currentTimeMillis();
+							boolean res = address.isReachable(3000);
+							if (match.pingMS == 0) {
+								match.pingMS = System.currentTimeMillis() - now;
+								System.out.println("PING " + res + " " + match.pingMS);
+								if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
+									listener.showUpdated();
+							}
+						} catch(Exception e) {}
+					}).start();
+				}
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -1990,6 +2006,16 @@ class FGReader extends TailerListenerAdapter {
 					+ " QueuedState: " + Core.queuedState + " Players: " + Core.queuedPlayers);
 			listener.queuedStateUpdated();
 		}
+		m = patternRTT.matcher(line);
+		if (m.find()) {
+			if (Core.currentMatch != null && Core.currentMatch.pingMS == 0) {
+				Core.currentMatch.pingMS = Integer.parseInt(m.group(1));
+				if (Core.currentMatch.start.getTime() > System.currentTimeMillis() - 30 * 60 * 1000)
+					listener.showUpdated();
+			}
+			return;
+		}
+
 		switch (readState) {
 		case SHOW_DETECTING: // start show or round detection
 		case ROUND_DETECTING: // start round detection
@@ -3050,7 +3076,7 @@ public class FallGuysRecord extends JFrame implements FGReader.Listener {
 			text += " WIN(" + m.winStreak + ")";
 		}
 		// server info
-		text += " PING: " + m.pingMS + "ms " + m.ip;
+		text += " PING: " + (m.pingMS > 0 ? m.pingMS : "---") + "ms " + m.ip;
 		Map<String, String> server = Core.servers.get(m.ip);
 		if (server != null)
 			text += " " + server.get("country") + " " + server.get("regionName") + " " + server.get("city") + " "
